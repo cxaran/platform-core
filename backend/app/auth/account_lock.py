@@ -51,12 +51,7 @@ async def increment_failed_login_attempts(
     await send_email(
         subject="Cuenta bloqueada",
         email_to=user.email,
-        template_name="locked.html",
-        template_context={
-            "name": user.name,
-            "email": user.email,
-            "expiration": f"{lock_minutes} minutos",
-        },
+        message=f"Tu cuenta ha sido bloqueada por {lock_minutes} minutos. Token de desbloqueo: {token}",
     )
 
 

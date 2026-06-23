@@ -13,6 +13,10 @@ class RegisterRequest(BaseModel):
     email: EmailStr
 
 
+class UnlockAccountRequest(BaseModel):
+    token: str = Field(..., min_length=10)
+
+
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 

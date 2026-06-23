@@ -28,12 +28,7 @@ async def send_password_reset_token(
     await send_email(
         subject="Recuperar contraseña",
         email_to=email,
-        template_name="forgot_password.html",
-        template_context={
-            "token": token,
-            "email": email,
-            "name": user.name,
-        },
+        message=f"Hola {user.name}, tu token para recuperar la contraseña es: {token}",
     )
 
     return token

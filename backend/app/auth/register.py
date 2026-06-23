@@ -27,10 +27,7 @@ async def send_registration_token(
     await send_email(
         subject="Solicitud de registro",
         email_to=email,
-        template_name="verification.html",
-        template_context={
-            "token": token,
-        }, 
+        message=f"Tu token de registro es: {token}",
     )
 
     return token

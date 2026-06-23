@@ -2,6 +2,7 @@
 from pydantic_settings import BaseSettings
 from pydantic import SecretStr, computed_field, PostgresDsn
 from pydantic_core import MultiHostUrl
+from fastapi_mail import ConnectionConfig
 from typing import Literal
 from functools import lru_cache
 
@@ -40,7 +41,35 @@ class Settings(BaseSettings):
                 )
             )
         )
-    
+
+    smtp_host: str
+    smtp_port: int
+    smtp_user: str
+    smtp_password: SecretStr
+    smtp_from_email: str
+    smtp_from_name: str
+    smtp_tls: bool
+    smtp_ssl: bool
+    smtp_use_credentials: bool
+
+    @computed_field
+    @property
+    def mail_config(self) -> ConnectionConfig:
+        
+        return ConnectionConfig(
+            MAIL_USERNAME=self.smtp_user,
+            MAIL_PASSWORD=self.smtp_password,
+            MAIL_FROM=self.smtp_from_email,
+            MAIL_FROM_NAME=self.smtp_from_name,
+            MAIL_SERVER=self.smtp_host,
+            MAIL_PORT=self.smtp_port,
+            MAIL_STARTTLS=self.smtp_tls,
+            MAIL_SSL_TLS=self.smtp_ssl,
+            USE_CREDENTIALS=self.smtp_use_credentials,
+            VALIDATE_CERTS=True,
+        )
+
+
 
 @lru_cache()
 def get_settings() -> Settings:
