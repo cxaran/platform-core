@@ -5,7 +5,7 @@ from sqlmodel import select
 
 from backend.app.core.database import SessionDep
 from backend.app.models.user import RoleAccess, User, UserRole
-from backend.app.schemas.user import UserBase
+from backend.app.schemas.user import SessionUser
 
 from .security import decode_jwt
 
@@ -32,14 +32,14 @@ def get_token(
 def build_current_user(
     session: SessionDep,
     user: User,
-) -> UserBase:
+) -> SessionUser:
     stmt = (
         select(RoleAccess.access)
         .join_from(RoleAccess, UserRole, RoleAccess.role_id == UserRole.role_id)
         .where(UserRole.user_id == user.id)
     )
     permissions = cast("list[str]", session.exec(stmt).all())
-    base_user = UserBase.model_validate(user, from_attributes=True)
+    base_user = SessionUser.model_validate(user, from_attributes=True)
     base_user.permissions = set(permissions)
     return base_user
 
@@ -47,7 +47,7 @@ def build_current_user(
 def get_current_user(
     session: SessionDep,
     token: str | None = Depends(get_token),
-) -> UserBase:
+) -> SessionUser:
     if not token:
         raise _unauthorized_error()
 
@@ -63,4 +63,4 @@ def get_current_user(
     return build_current_user(session, user)
 
 
-CurrentUser = Annotated[UserBase, Depends(get_current_user)]
+CurrentUser = Annotated[SessionUser, Depends(get_current_user)]

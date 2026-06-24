@@ -1,10 +1,9 @@
 import uuid
+from datetime import datetime
 from typing import Dict, Optional, Set
 
 from fastapi import Form
 from pydantic import (
-    BaseModel,
-    ConfigDict,
     EmailStr,
     SecretStr,
     Field,
@@ -13,20 +12,52 @@ from pydantic import (
 )
 from typing_extensions import Annotated, Self
 
+from backend.app.schemas.base import ApiPatchSchema, ApiReadSchema, ApiWriteSchema
 
 
-# Esquemas de usuario en la sesión
-class UserBase(BaseModel):
+# Usuario autenticado en sesión (no es un XBase de dominio: lleva permisos y la
+# lógica de control de acceso usada por las dependencias de auth).
+class SessionUser(ApiReadSchema):
     id: uuid.UUID
     name: str
     last_name: str
     email: EmailStr
     permissions: Set[str] = Field(default_factory=set)
 
-    model_config = ConfigDict(from_attributes=True)
-
     def access_control(self, access: str) -> bool:
         return access in self.permissions
+
+
+class UserRead(ApiReadSchema):
+    """Representación pública completa de un usuario."""
+
+    id: uuid.UUID
+    name: str
+    last_name: str
+    email: EmailStr
+    is_active: bool
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class UserListItem(ApiReadSchema):
+    """Versión reducida para listados de usuarios."""
+
+    id: uuid.UUID
+    name: str
+    last_name: str
+    email: EmailStr
+    is_active: bool
+    created_at: datetime
+
+
+class UserUpdate(ApiPatchSchema):
+    """Actualización parcial de un usuario (PATCH)."""
+
+    name: Optional[str] = Field(default=None, min_length=4, max_length=50)
+    last_name: Optional[str] = Field(default=None, min_length=4, max_length=50)
+    email: Optional[EmailStr] = None
+    is_active: Optional[bool] = None
 
 
 
@@ -47,7 +78,7 @@ def validate_password(password: SecretStr) -> SecretStr:
     return password
 
 
-class UserCreate(BaseModel):
+class UserCreate(ApiWriteSchema):
     """Esquema para crear un nuevo usuario con validaciones."""
 
     name: Annotated[str, Field(alias="first_name", min_length=4, max_length=50)]
@@ -56,8 +87,6 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: SecretStr = Field(..., min_length=8, max_length=128)
     confirm_password: SecretStr = Field(..., min_length=8, max_length=128)
-
-    model_config = ConfigDict(populate_by_name=True)
 
     @field_validator("name", "last_name")
     def names_not_empty(cls, v: str) -> str:
@@ -100,15 +129,13 @@ class UserCreate(BaseModel):
         }
 
 
-class UserResetPassword(BaseModel):
+class UserResetPassword(ApiWriteSchema):
     """Esquema para restablecer la contraseña de un usuario con validaciones."""
 
     token: Annotated[str, Field(min_length=10)]
     email: EmailStr
     password: SecretStr = Field(..., min_length=6, max_length=128)
     confirm_password: SecretStr = Field(..., min_length=6, max_length=128)
-
-    model_config = ConfigDict(populate_by_name=True)
 
     @field_validator("password")
     def password_validator(cls, v: SecretStr) -> SecretStr:

@@ -11,13 +11,13 @@ from backend.app.schemas.auth import (
     RegisterRequest,
     UnlockAccountRequest,
 )
-from backend.app.schemas.user import UserBase, UserCreate
+from backend.app.schemas.user import SessionUser, UserCreate
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.get("/me", response_model=UserBase)
-def read_current_user(current_user: CurrentUser) -> UserBase:
+@router.get("/me", response_model=SessionUser)
+def read_current_user(current_user: CurrentUser) -> SessionUser:
     return current_user
 
 

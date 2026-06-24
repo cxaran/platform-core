@@ -26,8 +26,8 @@ Run everything from the repo root. Python deps live in `backend/venv` (activate 
 # Run the API locally (needs Postgres + Redis reachable and env vars set)
 uvicorn backend.app.main:app --reload
 
-# Tests (stdlib unittest; each test file injects its own dev env vars before importing app)
-python -m unittest discover -s backend/tests -t .
+# Tests (stdlib unittest; tests/ has no __init__.py, so run modules by name, not `discover`)
+python -m unittest backend.tests.test_query backend.tests.test_query_helpers backend.tests.test_query_integration backend.tests.test_error_contract backend.tests.test_query_postgres backend.tests.test_security_catalog backend.tests.test_auth_routes
 python -m unittest backend.tests.test_security_catalog          # single module
 python -m unittest backend.tests.test_security_catalog.SecurityCatalogTest.test_catalog_permissions_are_unique  # single test
 
@@ -76,6 +76,11 @@ Permissions are **declared in code**, stored in the DB as plain strings, and enf
 - A user's permission set is materialized at request time from `RoleAccess.access` joined through `UserRole` (`build_current_user`), and membership is checked via `UserBase.access_control`.
 
 When adding a permission: add the enum member to the relevant group, ensure its group is in `SECURITY_GROUPS`, and update `tests/test_security_catalog.py` (which asserts the exact ordered list of permission strings and that they are unique).
+
+### Schema conventions & the query engine (`app/schemas/`, `app/query/`)
+Schemas follow a per-operation convention — a schema is a contract for **one operation/context**, never "the whole table". Technical base classes live in `app/schemas/base.py` (no business fields): root `ApiSchema`; `ApiReadSchema` (`from_attributes=True`) backs `XRead`/`XListItem`; `ApiWriteSchema` (`extra="forbid"`) backs `XCreate`/`XReplace`; `ApiPatchSchema` backs `XUpdate` (PATCH = all-Optional fields + consume with `model_dump(exclude_unset=True)`). The `XQuery` base is `query/schema.py::OffsetQuerySchema`. Naming per resource `X`: `XBase` (optional shared domain fields), `XCreate`, `XRead`, `XListItem`, `XUpdate`, `XReplace`, `XQuery`, `XDeleteResult`, `X<Action>Request/Result`. Note: `schemas/user.py::SessionUser` is the authenticated-session user (has `permissions` + `access_control`), **not** a generic read schema — don't confuse it with `UserRead`.
+
+The `app/query/` engine turns a public read schema + ORM model + `QueryOptions` into a dynamic `XQuery` (FastAPI query-params model) plus filter/sort/pagination application. Security rule is **allowlist**: only fields listed in `QueryOptions` (`filter_fields`, `sort_fields`, `search_fields`, `in_fields`, `null_filter_fields`) become queryable — "lo no declarado permanece prohibido". Use `ResourceQuery(name, model, schema, options)` (built once at module load) + `paginate()`/`OffsetPage` (response contract in `schemas/pagination.py`). Config errors fail fast at import (`QuerySchemaConfigError`); bad client params raise `QueryParameterError` → 422 via `core/error_handlers.py` using the `schemas/error.py` envelope (`{code, message, errors}`). Full vision/roadmap: `~/.claude/plans/reporte-de-arquitectura-hashed-coral.md`.
 
 ### Routing status
 `api/v1/router.py` only mounts the `auth` router today. `api/v1/users.py`, `roles.py`, and `permissions.py` exist but are **empty stubs**. `test_auth_routes.py` explicitly asserts that unimplemented routes (`/auth/refresh`, `/auth/logout`) are absent from the OpenAPI schema — keep that test in mind when adding/removing routes.
