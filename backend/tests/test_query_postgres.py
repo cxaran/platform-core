@@ -213,9 +213,12 @@ class PgIntegrationTest(unittest.TestCase):
         with Session(self.engine) as session:
             page = paginate(session, stmt=base_stmt, query=query, item_schema=PgWidgetRead)
 
+        # Lógica trivaluada de SQL: `category != 'gear'` excluye también las filas
+        # con `category IS NULL` (id=4), por eso no aparece. id=5/6 son 'gear';
+        # de los 'tools' restantes (1,3,7,8) el filtro price_gte=30 deja 3,7,8.
         ids = [item.id for item in page.items]
-        self.assertEqual(sorted(ids), [3, 4, 7, 8])
-        self.assertEqual(page.pagination.total, 4)
+        self.assertEqual(sorted(ids), [3, 7, 8])
+        self.assertEqual(page.pagination.total, 3)
 
 
 if __name__ == "__main__":
