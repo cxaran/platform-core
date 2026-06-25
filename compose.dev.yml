@@ -25,6 +25,17 @@ x-backend-environment: &backend-environment
   POSTGRES_DB: platform_core
 
 services:
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   postgres:
     image: postgres:16-alpine
     environment:
@@ -51,6 +62,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes:
       - ./backend:/app/backend
 
@@ -72,6 +85,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
 
   frontend:
     build:
@@ -79,13 +94,18 @@ services:
       target: dev
     image: platform-core-frontend:dev
     environment:
+      API_PROXY_TARGET: http://backend:8000
+      BACKEND_INTERNAL_URL: http://backend:8000
       WATCHPACK_POLLING: "true"
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
     volumes:
       - ./frontend:/app
       - frontend_node_modules:/app/node_modules
       - frontend_next:/app/.next
 
 volumes:
+  redis_data:
   postgres_data:
   frontend_node_modules:
   frontend_next:

@@ -1,0 +1,33 @@
+{
+  "name": "platform-core-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=24.0.0 <25.0.0",
+    "npm": ">=11.0.0"
+  },
+  "scripts": {
+    "dev": "next dev -H 0.0.0.0",
+    "build": "next build",
+    "start": "next start -H 0.0.0.0",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tailwindcss/postcss": "4.3.1",
+    "next": "16.2.9",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "tailwindcss": "4.3.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@next/eslint-plugin-next": "16.2.9",
+    "@types/node": "26.0.1",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "eslint": "10.5.0",
+    "typescript-eslint": "8.62.0",
+    "typescript": "6.0.3"
+  }
+}
