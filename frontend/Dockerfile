@@ -6,6 +6,8 @@ RUN npm ci
 
 FROM deps AS dev
 
+RUN apk add --no-cache git
+
 WORKDIR /app
 COPY . .
 EXPOSE 3000

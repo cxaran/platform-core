@@ -18,7 +18,7 @@ export function SessionProvider({
   initialSession: SessionUser;
   children: React.ReactNode;
 }>) {
-  const permissions = new Set(initialSession.permissions);
+  const permissions = new Set(initialSession.permissions ?? []);
 
   return (
     <SessionContext.Provider
