@@ -1,10 +1,12 @@
 """Helpers para construir consultas desde schemas Pydantic."""
 
 from backend.app.query.compiler import apply_query_schema
+from backend.app.query.contracts import ListQueryContract
 from backend.app.query.executor import paginate
 from backend.app.query.factory import (
     CompiledListQuery,
     compile_list_query,
+    compile_list_query_from_policy,
     make_offset_query_schema,
 )
 from backend.app.query.fields import FieldSpec
@@ -25,6 +27,7 @@ __all__ = [
     "CompiledListQuery",
     "CompiledQueryPlan",
     "FieldSpec",
+    "ListQueryContract",
     "OffsetPage",
     "OffsetPagination",
     "OffsetQuerySchema",
@@ -37,6 +40,7 @@ __all__ = [
     "ResourceQuery",
     "apply_query_schema",
     "compile_list_query",
+    "compile_list_query_from_policy",
     "make_offset_query_schema",
     "paginate",
 ]

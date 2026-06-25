@@ -27,7 +27,7 @@ Run everything from the repo root. Python deps live in `backend/venv` (activate 
 uvicorn backend.app.main:app --reload
 
 # Tests (stdlib unittest; tests/ has no __init__.py, so run modules by name, not `discover`)
-python -m unittest backend.tests.test_query backend.tests.test_query_helpers backend.tests.test_query_integration backend.tests.test_query_policy backend.tests.test_query_plan backend.tests.test_error_contract backend.tests.test_query_postgres backend.tests.test_security_catalog backend.tests.test_auth_routes
+python -m unittest backend.tests.test_query backend.tests.test_query_helpers backend.tests.test_query_integration backend.tests.test_query_policy backend.tests.test_query_plan backend.tests.test_query_contract backend.tests.test_error_contract backend.tests.test_query_postgres backend.tests.test_security_catalog backend.tests.test_auth_routes
 python -m unittest backend.tests.test_security_catalog          # single module
 python -m unittest backend.tests.test_security_catalog.SecurityCatalogTest.test_catalog_permissions_are_unique  # single test
 

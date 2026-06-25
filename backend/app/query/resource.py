@@ -1,13 +1,18 @@
-"""Descriptor declarativo que agrupa modelo, schema y opciones de un recurso."""
+"""``ResourceQuery``: fachada de compatibilidad sobre ``ListQueryContract``.
+
+Conserva exactamente el constructor, ``.Query`` y ``.paginate()`` que ya usan los
+callers existentes (``api/v1/roles.py``, ``api/v1/users_admin.py``,
+``api/resource_actions.py``). Internamente delega en ``ListQueryContract``, que
+pasa el plan explícito al motor. La API nueva es ``ListQueryContract``.
+"""
 
 from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel
-from sqlalchemy import Select, select
+from sqlalchemy import Select
 from sqlalchemy.orm import Session
 
-from backend.app.query.executor import paginate
-from backend.app.query.factory import make_offset_query_schema
+from backend.app.query.contracts import ListQueryContract
 from backend.app.query.options import QueryOptions
 from backend.app.query.schema import OffsetQuerySchema
 from backend.app.schemas.pagination import OffsetPage
@@ -16,10 +21,9 @@ TItem = TypeVar("TItem", bound=BaseModel)
 
 
 class ResourceQuery(Generic[TItem]):
-    """Une un modelo ORM con su schema de lectura y genera (una sola vez) el
-    ``QuerySchema`` de filtros/orden/paginación.
+    """Fachada heredada. Para recursos nuevos prefiera ``ListQueryContract``.
 
-    Se define a nivel de módulo y se reutiliza en el endpoint::
+    Ejemplo::
 
         USERS = ResourceQuery(
             name="UserQuery",
@@ -45,14 +49,17 @@ class ResourceQuery(Generic[TItem]):
         schema: type[TItem],
         options: QueryOptions | None = None,
     ) -> None:
+        # La fachada heredada siempre opera por ``options`` (default vacío si se
+        # omite), de modo que el contrato recibe exactamente una fuente.
+        self._contract: ListQueryContract[TItem] = ListQueryContract(
+            name=name,
+            model=model,
+            schema=schema,
+            options=options if options is not None else QueryOptions(),
+        )
         self.model = model
         self.schema = schema
-        self.Query: type[OffsetQuerySchema] = make_offset_query_schema(
-            name=name,
-            resource_schema=schema,
-            orm_model=model,
-            options=options,
-        )
+        self.Query: type[OffsetQuerySchema] = self._contract.Query
 
     def paginate(
         self,
@@ -63,5 +70,4 @@ class ResourceQuery(Generic[TItem]):
     ) -> OffsetPage[TItem]:
         """Pagina el recurso. Por defecto consulta ``select(model)``; se puede
         pasar un ``stmt`` propio (p. ej. con joins o filtros de tenant)."""
-        statement = stmt if stmt is not None else select(self.model)
-        return paginate(session, stmt=statement, query=query, item_schema=self.schema)
+        return self._contract.paginate(session, query, stmt=stmt)

@@ -13,8 +13,10 @@ from sqlalchemy.orm.attributes import InstrumentedAttribute
 from sqlalchemy.orm.properties import ColumnProperty
 from sqlalchemy.sql.elements import ColumnElement
 
+from backend.app.query.operators import Operator
 from backend.app.query.options import QueryOptions
 from backend.app.query.plans import CompiledQueryPlan
+from backend.app.query.policies import QueryPolicy
 from backend.app.query.schema import OffsetQuerySchema
 from backend.app.query.validation import fail_config
 
@@ -130,15 +132,157 @@ def compile_list_query(
         ),
     )
 
+    return _build_compiled(
+        name=name,
+        module=resource_schema.__module__,
+        model=orm_model,
+        field_definitions=field_definitions,
+        filter_columns=filter_columns,
+        all_columns=all_columns,
+        range_fields=range_fields,
+        in_fields=in_fields,
+        null_filter_fields=null_filter_fields,
+        sort_columns=sort_columns,
+        search_columns=search_columns,
+        primary_keys=primary_keys,
+        max_sort_terms=query_options.max_sort_terms,
+        max_in_values=query_options.max_in_values,
+        max_sort_length=query_options.max_sort_length,
+        max_filter_text_length=query_options.max_filter_text_length,
+    )
+
+
+def compile_list_query_from_policy(
+    *,
+    name: str,
+    orm_model: type[Any],
+    policy: QueryPolicy,
+) -> CompiledListQuery:
+    """Compila el schema + plan desde una ``QueryPolicy`` (camino nuevo).
+
+    Reutiliza el mismo ensamblado (``_build_compiled``) que el camino ``options``,
+    derivando columnas/operadores de los ``FieldSpec`` ya resueltos por la policy.
+    """
+    field_definitions: dict[str, tuple[Any, Any]] = {}
+    all_columns: dict[str, ColumnElement[Any] | InstrumentedAttribute[Any]] = {}
+    filter_columns: dict[str, ColumnElement[Any] | InstrumentedAttribute[Any]] = {}
+    sort_columns: dict[str, ColumnElement[Any] | InstrumentedAttribute[Any]] = {}
+    range_fields: set[str] = set()
+    in_fields: set[str] = set()
+    null_filter_fields: set[str] = set()
+    search_columns_list: list[ColumnElement[Any] | InstrumentedAttribute[Any]] = []
+
+    for spec in policy.fields:
+        all_columns[spec.name] = spec.source
+        if Operator.EQ in spec.operators:
+            filter_columns[spec.name] = spec.source
+            field_definitions[spec.name] = _optional_filter_field_with_limit(
+                spec.type, policy.limits.max_filter_text_length
+            )
+        if Operator.GTE in spec.operators:
+            field_definitions[f"{spec.name}_gte"] = (spec.type | None, None)
+        if Operator.LTE in spec.operators:
+            field_definitions[f"{spec.name}_lte"] = (spec.type | None, None)
+        if Operator.GTE in spec.operators and Operator.LTE in spec.operators:
+            range_fields.add(spec.name)
+        if Operator.IN in spec.operators:
+            field_definitions[f"{spec.name}_in"] = (
+                list[spec.type] | None,
+                Field(default=None, min_length=1, max_length=policy.limits.max_in_values),
+            )
+            in_fields.add(spec.name)
+        if Operator.ISNULL in spec.operators:
+            field_definitions[f"{spec.name}_isnull"] = (bool | None, None)
+            null_filter_fields.add(spec.name)
+        if spec.searchable:
+            search_columns_list.append(spec.source)
+
+    search_columns = tuple(search_columns_list)
+    primary_keys = _primary_key_columns(orm_model)
+
+    if policy.sort.public_sort_fields:
+        for field_name in policy.sort.public_sort_fields:
+            sort_columns[field_name] = all_columns[field_name]
+    else:
+        sort_columns.update(all_columns)
+
+    field_names = {spec.name for spec in policy.fields}
+    for pk_name in _primary_key_names(primary_keys):
+        if pk_name not in sort_columns and pk_name in field_names:
+            sort_columns[pk_name] = getattr(orm_model, pk_name)
+
+    if search_columns:
+        field_definitions["q"] = (
+            str | None,
+            Field(default=None, min_length=policy.search.min_len, max_length=policy.search.max_len),
+        )
+
+    default_sort = _default_sort_value(
+        policy.sort.default_order, sort_columns, primary_keys, policy.limits.max_sort_terms
+    )
+    field_definitions["limit"] = (
+        int,
+        Field(default=policy.pagination.default_limit, ge=1, le=policy.pagination.max_limit),
+    )
+    field_definitions["sort"] = (
+        str,
+        Field(
+            default=default_sort,
+            min_length=1,
+            max_length=policy.limits.max_sort_length,
+            description="Campos de orden separados por coma. Use '-' para orden descendente.",
+        ),
+    )
+
+    return _build_compiled(
+        name=name,
+        module=orm_model.__module__,
+        model=orm_model,
+        field_definitions=field_definitions,
+        filter_columns=filter_columns,
+        all_columns=all_columns,
+        range_fields=range_fields,
+        in_fields=in_fields,
+        null_filter_fields=null_filter_fields,
+        sort_columns=sort_columns,
+        search_columns=search_columns,
+        primary_keys=primary_keys,
+        max_sort_terms=policy.limits.max_sort_terms,
+        max_in_values=policy.limits.max_in_values,
+        max_sort_length=policy.limits.max_sort_length,
+        max_filter_text_length=policy.limits.max_filter_text_length,
+    )
+
+
+def _build_compiled(
+    *,
+    name: str,
+    module: str,
+    model: type[Any],
+    field_definitions: dict[str, tuple[Any, Any]],
+    filter_columns: dict[str, ColumnElement[Any] | InstrumentedAttribute[Any]],
+    all_columns: dict[str, ColumnElement[Any] | InstrumentedAttribute[Any]],
+    range_fields: set[str],
+    in_fields: set[str],
+    null_filter_fields: set[str],
+    sort_columns: dict[str, ColumnElement[Any] | InstrumentedAttribute[Any]],
+    search_columns: tuple[ColumnElement[Any] | InstrumentedAttribute[Any], ...],
+    primary_keys: tuple[ColumnElement[Any], ...],
+    max_sort_terms: int,
+    max_in_values: int,
+    max_sort_length: int,
+    max_filter_text_length: int,
+) -> CompiledListQuery:
+    """Ensamblado compartido: crea el schema Pydantic, fija ``__query_*__`` (ruta
+    heredada / fallback) y construye el ``CompiledQueryPlan``."""
     query_schema = create_model(
         name,
         __base__=OffsetQuerySchema,
-        __module__=resource_schema.__module__,
+        __module__=module,
         **cast(Any, field_definitions),
     )
 
-    # Los atributos __query_*__ se conservan (ruta heredada / fallback del compiler).
-    setattr(query_schema, "model", orm_model)
+    setattr(query_schema, "model", model)
     setattr(query_schema, "__query_columns__", filter_columns)
     setattr(query_schema, "__query_all_columns__", all_columns)
     setattr(query_schema, "__query_range_fields__", range_fields)
@@ -147,9 +291,8 @@ def compile_list_query(
     setattr(query_schema, "__query_sort_columns__", sort_columns)
     setattr(query_schema, "__query_search_columns__", search_columns)
     setattr(query_schema, "__query_primary_keys__", primary_keys)
-    setattr(query_schema, "__query_max_sort_terms__", query_options.max_sort_terms)
+    setattr(query_schema, "__query_max_sort_terms__", max_sort_terms)
 
-    # El plan describe exactamente la misma metadata, en forma tipada e inmutable.
     plan = CompiledQueryPlan(
         filter_columns=filter_columns,
         all_columns=all_columns,
@@ -159,12 +302,18 @@ def compile_list_query(
         sort_columns=sort_columns,
         search_columns=search_columns,
         primary_keys=primary_keys,
-        max_sort_terms=query_options.max_sort_terms,
-        max_in_values=query_options.max_in_values,
-        max_sort_length=query_options.max_sort_length,
-        max_filter_text_length=query_options.max_filter_text_length,
+        max_sort_terms=max_sort_terms,
+        max_in_values=max_in_values,
+        max_sort_length=max_sort_length,
+        max_filter_text_length=max_filter_text_length,
     )
     return CompiledListQuery(schema=query_schema, plan=plan)
+
+
+def _optional_filter_field_with_limit(field_type: type[Any], max_filter_text_length: int) -> tuple[Any, Any]:
+    if _is_text_type(field_type):
+        return (field_type | None, Field(default=None, max_length=max_filter_text_length))
+    return (field_type | None, None)
 
 
 def _register_in_filters(
@@ -393,9 +542,20 @@ def _default_sort(
     sort_columns: dict[str, ColumnElement[Any] | InstrumentedAttribute[Any]],
     primary_keys: tuple[ColumnElement[Any], ...],
 ) -> str:
-    if options.default_sort:
-        _validate_default_sort(options.default_sort, sort_columns, options.max_sort_terms)
-        return options.default_sort
+    return _default_sort_value(
+        options.default_sort, sort_columns, primary_keys, options.max_sort_terms
+    )
+
+
+def _default_sort_value(
+    raw_default: str | None,
+    sort_columns: dict[str, ColumnElement[Any] | InstrumentedAttribute[Any]],
+    primary_keys: tuple[ColumnElement[Any], ...],
+    max_sort_terms: int,
+) -> str:
+    if raw_default:
+        _validate_default_sort(raw_default, sort_columns, max_sort_terms)
+        return raw_default
     if "created_at" in sort_columns:
         return "-created_at"
     primary_key_names = _primary_key_names(primary_keys)
