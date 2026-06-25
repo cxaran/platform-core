@@ -83,14 +83,6 @@ async function fetchOpenApi(url) {
   return schema;
 }
 
-async function readExistingContent() {
-  try {
-    return await readFile(outputPath, "utf8");
-  } catch {
-    return null;
-  }
-}
-
 async function generateContent() {
   const openApiUrl = readOpenApiUrl();
   const schema = await fetchOpenApi(openApiUrl);
@@ -101,6 +93,21 @@ async function generateContent() {
   return `${header}${source}`;
 }
 
+// Normaliza saltos de línea para que la comparación no produzca falsos
+// positivos entre Windows (CRLF) y Linux/Docker (LF).
+function normalize(content) {
+  return content.replace(/\r\n/g, "\n");
+}
+
+async function readExistingContent() {
+  try {
+    return await readFile(outputPath, "utf8");
+  } catch {
+    return null;
+  }
+}
+
+// Modo generate:api -> escribe el archivo generado de forma atómica.
 async function writeAtomic(content) {
   const dir = dirname(outputPath);
   await mkdir(dir, { recursive: true });
@@ -117,27 +124,31 @@ async function writeAtomic(content) {
   console.log(`[generate:api] Tipos generados en ${outputPathRelative}`);
 }
 
-function checkDrift(existingContent, newContent) {
-  if (existingContent === null) {
+// Modo check:api -> compara el contenido generado contra el archivo en disco
+// sin modificarlo. Detecta tanto drift del backend como ediciones manuales.
+async function checkDrift(newContent) {
+  const existing = await readExistingContent();
+
+  if (existing === null) {
     fail(
-      "No existe src/generated/openapi.ts. Ejecute generate:api y versiona el resultado.",
+      `No existe ${outputPathRelative}. Ejecute generate:api y versiona el resultado.`,
     );
   }
 
-  if (existingContent !== newContent) {
+  if (normalize(existing) !== normalize(newContent)) {
     fail(
-      "El contrato OpenAPI generado cambió. Ejecute generate:api y versiona el resultado.",
+      `${outputPathRelative} está desactualizado o fue editado manualmente. ` +
+        "Ejecute generate:api y versiona el resultado.",
     );
   }
 
-  console.log("[check:api] Sin drift en src/generated/openapi.ts");
+  console.log(`[check:api] Sin drift en ${outputPathRelative}`);
 }
 
+const content = await generateContent();
+
 if (shouldCheck) {
-  const existing = await readExistingContent();
-  const generated = await generateContent();
-  checkDrift(existing, generated);
+  await checkDrift(content);
 } else {
-  const content = await generateContent();
   await writeAtomic(content);
 }
