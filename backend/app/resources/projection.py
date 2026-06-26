@@ -21,6 +21,7 @@ from backend.app.query.operators import Operator
 from backend.app.query.plans import CompiledQueryPlan
 from backend.app.resources.registry import (
     ActionDef,
+    RelationDef,
     ResourceDefinition,
     get_resource,
     RESOURCE_REGISTRY,
@@ -30,6 +31,7 @@ from backend.app.schemas.capabilities import (
     FilterOperator,
     HttpMethod,
     PaginationCapability,
+    RelationOptionsSource,
     ResourceActionCapability,
     ResourceCapability,
     ResourceFieldCapability,
@@ -39,6 +41,7 @@ from backend.app.schemas.capabilities import (
     ResourceFormFieldCapability,
     ResourceFormsCapability,
     ResourceListCapability,
+    ResourceRelationCapability,
     ResourceView,
     SearchCapability,
     SortCapability,
@@ -406,6 +409,27 @@ def _action_capability(action: ActionDef) -> ResourceActionCapability:
     )
 
 
+def _relation_capability(relation: RelationDef) -> ResourceRelationCapability:
+    return ResourceRelationCapability(
+        name=relation.name,
+        label=relation.label,
+        description=relation.description,
+        cardinality=relation.cardinality,
+        required=relation.required,
+        editable=True,
+        selection_url=relation.selection_url_template,
+        mutation_method=relation.mutation_method,
+        mutation_url=relation.mutation_url_template,
+        request_field=relation.request_field,
+        options=RelationOptionsSource(
+            type=relation.options_type,
+            url=relation.options_url,
+            value_field=relation.options_value_field,
+            label_field=relation.options_label_field,
+        ),
+    )
+
+
 def _build_capability(definition: ResourceDefinition, user: SessionUser) -> ResourceCapability:
     list_cap: Optional[ResourceListCapability] = None
     forms_cap: Optional[ResourceFormsCapability] = None
@@ -420,6 +444,14 @@ def _build_capability(definition: ResourceDefinition, user: SessionUser) -> Reso
         if action.permission.check(user)
     ]
 
+    # Una relación se proyecta solo si el actor puede editarla (además del permiso
+    # de lectura del recurso, ya filtrado al elegir el recurso visible).
+    relations = [
+        _relation_capability(relation)
+        for relation in definition.relations
+        if relation.permission.check(user)
+    ]
+
     return ResourceCapability(
         name=definition.name,
         label=definition.label,
@@ -428,6 +460,7 @@ def _build_capability(definition: ResourceDefinition, user: SessionUser) -> Reso
         list=list_cap,
         forms=forms_cap,
         actions=actions,
+        relations=relations,
     )
 
 

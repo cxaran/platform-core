@@ -9,11 +9,13 @@ from backend.app.schemas.base import ApiPatchSchema, ApiReadSchema, ApiWriteSche
 
 class PermissionRead(ApiReadSchema):
     access: str
+    label: str
     description: Optional[str] = None
 
 
 class PermissionGroupRead(ApiReadSchema):
     name: str
+    label: str
     permissions: list[PermissionRead]
 
 
@@ -57,6 +59,12 @@ class RoleUpdate(ApiPatchSchema):
 
 class RolePermissionsReplace(ApiWriteSchema):
     """Reemplazo completo de permisos asignados a un rol (PUT)."""
+
+    permissions: list[str]
+
+
+class RolePermissionsRead(ApiReadSchema):
+    """Selección actual de permisos de un rol (lectura para el editor relacional)."""
 
     permissions: list[str]
 

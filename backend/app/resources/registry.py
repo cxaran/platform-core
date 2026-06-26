@@ -15,7 +15,13 @@ from pydantic import BaseModel
 
 from backend.app.models.user import Role, User
 from backend.app.query import QueryOptions, ResourceQuery
-from backend.app.schemas.capabilities import ActionScope, HttpMethod, ResourceView
+from backend.app.schemas.capabilities import (
+    ActionScope,
+    HttpMethod,
+    OptionsSourceType,
+    RelationCardinality,
+    ResourceView,
+)
 from backend.app.schemas.role import RoleCreate, RoleListItem, RoleRead, RoleUpdate
 from backend.app.schemas.user_admin import (
     UserAdminCreate,
@@ -84,6 +90,32 @@ class ActionDef:
 
 
 @dataclass(frozen=True)
+class RelationDef:
+    """Editor relacional declarado de un recurso (reemplazo atómico de una M2M).
+
+    Las URLs son plantillas con ``{id}`` del recurso dueño. ``permission`` es el
+    control que habilita **editar** la relación: la capability solo se proyecta si
+    el actor lo cumple (además del permiso de lectura del recurso). El backend sigue
+    siendo la autoridad: supervivencia administrativa e invalidación de sesiones se
+    aplican en la mutación, no en la UI."""
+
+    name: str
+    label: str
+    description: Optional[str]
+    cardinality: RelationCardinality
+    required: bool
+    selection_url_template: str
+    mutation_method: HttpMethod
+    mutation_url_template: str
+    request_field: str
+    options_type: OptionsSourceType
+    options_url: str
+    options_value_field: str
+    options_label_field: str
+    permission: SecurityGroup
+
+
+@dataclass(frozen=True)
 class ResourceDefinition:
     name: str
     label: str
@@ -97,6 +129,7 @@ class ResourceDefinition:
     create_permission: Optional[SecurityGroup] = None
     update_permission: Optional[SecurityGroup] = None
     actions: tuple[ActionDef, ...] = ()
+    relations: tuple[RelationDef, ...] = ()
 
 
 RESOURCE_REGISTRY: tuple[ResourceDefinition, ...] = (
@@ -132,6 +165,24 @@ RESOURCE_REGISTRY: tuple[ResourceDefinition, ...] = (
                 permission=UserPermissions.DELETE,
             ),
         ),
+        relations=(
+            RelationDef(
+                name="roles",
+                label="Roles",
+                description="Roles asignados al usuario",
+                cardinality=RelationCardinality.MULTIPLE,
+                required=False,
+                selection_url_template="/api/v1/users/{id}/roles",
+                mutation_method=HttpMethod.PUT,
+                mutation_url_template="/api/v1/users/{id}/roles",
+                request_field="role_ids",
+                options_type=OptionsSourceType.LIST,
+                options_url="/api/v1/roles",
+                options_value_field="id",
+                options_label_field="name",
+                permission=UserPermissions.MANAGE_ROLES,
+            ),
+        ),
     ),
     ResourceDefinition(
         name="roles",
@@ -154,6 +205,24 @@ RESOURCE_REGISTRY: tuple[ResourceDefinition, ...] = (
                 scope=ActionScope.ITEM,
                 danger=True,
                 permission=RolePermissions.DELETE,
+            ),
+        ),
+        relations=(
+            RelationDef(
+                name="permissions",
+                label="Permisos",
+                description="Permisos asignados al rol",
+                cardinality=RelationCardinality.MULTIPLE,
+                required=False,
+                selection_url_template="/api/v1/roles/{id}/permissions",
+                mutation_method=HttpMethod.PUT,
+                mutation_url_template="/api/v1/roles/{id}/permissions",
+                request_field="permissions",
+                options_type=OptionsSourceType.GROUPED_CATALOG,
+                options_url="/api/v1/permissions",
+                options_value_field="access",
+                options_label_field="label",
+                permission=RolePermissions.MANAGE_PERMISSIONS,
             ),
         ),
     ),

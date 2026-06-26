@@ -70,6 +70,17 @@ class ResourceView(str, Enum):
     GROUPED_CATALOG = "grouped_catalog"
 
 
+class RelationCardinality(str, Enum):
+    MULTIPLE = "multiple"
+
+
+class OptionsSourceType(str, Enum):
+    # Endpoint de lista paginada (p. ej. roles): cada item lleva value y label.
+    LIST = "list"
+    # Catálogo agrupado (p. ej. permisos): grupos con permisos que llevan value y label.
+    GROUPED_CATALOG = "grouped_catalog"
+
+
 class ResourceFieldCapability(ApiReadSchema):
     name: str
     label: str
@@ -154,6 +165,36 @@ class ResourceActionCapability(ApiReadSchema):
     danger: bool
 
 
+class RelationOptionsSource(ApiReadSchema):
+    """Origen declarado del universo de opciones de un editor relacional."""
+
+    type: OptionsSourceType
+    url: str
+    value_field: str
+    label_field: str
+
+
+class ResourceRelationCapability(ApiReadSchema):
+    """Editor relacional declarado por el backend (p. ej. roles de un usuario).
+
+    El frontend no infiere rutas ni cardinalidad desde nombres: consume estas URLs
+    y campos. ``selection_url`` y ``mutation_url`` son plantillas con ``{id}`` del
+    recurso dueño. ``request_field`` es el campo del cuerpo que transporta la lista
+    completa de valores objetivo (reemplazo atómico)."""
+
+    name: str
+    label: str
+    description: Optional[str] = None
+    cardinality: RelationCardinality
+    required: bool
+    editable: bool
+    selection_url: str
+    mutation_method: HttpMethod
+    mutation_url: str
+    request_field: str
+    options: RelationOptionsSource
+
+
 class ResourceCapability(ApiReadSchema):
     name: str
     label: str
@@ -164,3 +205,4 @@ class ResourceCapability(ApiReadSchema):
     list_: Optional[ResourceListCapability] = Field(default=None, alias="list")
     forms: Optional[ResourceFormsCapability] = None
     actions: list[ResourceActionCapability] = []
+    relations: list[ResourceRelationCapability] = []

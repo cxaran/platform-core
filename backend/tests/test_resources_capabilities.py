@@ -204,6 +204,61 @@ class CapabilityContentTest(unittest.TestCase):
             _require_label(NoLabel.model_fields["value"], "value")
 
 
+class ResourceRelationsTest(unittest.TestCase):
+    def test_roles_relation_absent_without_manage_roles(self) -> None:
+        with _As("users:read"):
+            users = client.get("/api/v1/resources/users").json()
+        self.assertEqual(users.get("relations", []), [])
+
+    def test_roles_relation_present_with_manage_roles(self) -> None:
+        with _As("users:read", "users:manage_roles"):
+            users = client.get("/api/v1/resources/users").json()
+        relation = next(r for r in users["relations"] if r["name"] == "roles")
+        self.assertEqual(relation["cardinality"], "multiple")
+        self.assertTrue(relation["editable"])
+        self.assertEqual(relation["selection_url"], "/api/v1/users/{id}/roles")
+        self.assertEqual(relation["mutation_method"], "PUT")
+        self.assertEqual(relation["mutation_url"], "/api/v1/users/{id}/roles")
+        self.assertEqual(relation["request_field"], "role_ids")
+        self.assertEqual(relation["options"]["type"], "list")
+        self.assertEqual(relation["options"]["url"], "/api/v1/roles")
+        self.assertEqual(relation["options"]["value_field"], "id")
+        self.assertEqual(relation["options"]["label_field"], "name")
+
+    def test_permissions_relation_present_with_manage_permissions(self) -> None:
+        with _As("roles:read", "roles:manage_permissions"):
+            roles = client.get("/api/v1/resources/roles").json()
+        relation = next(r for r in roles["relations"] if r["name"] == "permissions")
+        self.assertEqual(relation["selection_url"], "/api/v1/roles/{id}/permissions")
+        self.assertEqual(relation["mutation_url"], "/api/v1/roles/{id}/permissions")
+        self.assertEqual(relation["request_field"], "permissions")
+        self.assertEqual(relation["options"]["type"], "grouped_catalog")
+        self.assertEqual(relation["options"]["url"], "/api/v1/permissions")
+        self.assertEqual(relation["options"]["value_field"], "access")
+
+    def test_permissions_relation_absent_without_manage_permissions(self) -> None:
+        with _As("roles:read"):
+            roles = client.get("/api/v1/resources/roles").json()
+        self.assertEqual(roles.get("relations", []), [])
+
+
+class PermissionsCatalogTest(unittest.TestCase):
+    def test_requires_permissions_read(self) -> None:
+        with _As("users:read"):
+            self.assertEqual(client.get("/api/v1/permissions").status_code, 403)
+
+    def test_grouped_catalog_exposes_labels(self) -> None:
+        with _As("permissions:read"):
+            groups = client.get("/api/v1/permissions").json()
+        names = [group["name"] for group in groups]
+        self.assertEqual(names, ["users", "roles", "permissions"])
+        for group in groups:
+            self.assertTrue(group["label"])
+            for permission in group["permissions"]:
+                self.assertTrue(permission["access"])
+                self.assertTrue(permission["label"])
+
+
 class ResourcesOpenApiTest(unittest.TestCase):
     def setUp(self) -> None:
         self.openapi = client.get("/api/openapi.json").json()
@@ -222,6 +277,10 @@ class ResourcesOpenApiTest(unittest.TestCase):
             "ResourceActionCapability",
             "ResourceFormCapability",
             "ResourceFormFieldCapability",
+            "ResourceRelationCapability",
+            "RelationOptionsSource",
+            "RelationCardinality",
+            "OptionsSourceType",
             "FieldValueType",
             "WidgetType",
             "FilterOperator",

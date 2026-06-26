@@ -27,6 +27,7 @@ from backend.app.schemas.role import (
     RoleCreate,
     RoleDetailRead,
     RoleListItem,
+    RolePermissionsRead,
     RolePermissionsReplace,
     RoleRead,
     RoleUpdate,
@@ -148,6 +149,20 @@ def delete_role(
         conflict_code="resource_state_conflict",
     )
     return serialize(RoleRead, role)
+
+
+@router.get("/{role_id}/permissions", response_model=RolePermissionsRead)
+def get_role_permissions(
+    role_id: UUID,
+    session: SessionDep,
+    _: RolePermissions.MANAGE_PERMISSIONS.requiere,
+) -> RolePermissionsRead:
+    """Selección actual de permisos del rol (lectura para el editor relacional)."""
+    get_or_404(session, Role, role_id, "Rol no encontrado")
+    permissions = list_child_values(
+        session, RoleAccess, owner_field="role_id", owner_id=role_id, value_field="access"
+    )
+    return RolePermissionsRead(permissions=permissions)
 
 
 @router.put("/{role_id}/permissions", response_model=RoleDetailRead)

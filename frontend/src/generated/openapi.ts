@@ -300,7 +300,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Get Role Permissions
+         * @description Selección actual de permisos del rol (lectura para el editor relacional).
+         */
+        get: operations["get_role_permissions_api_v1_roles__role_id__permissions_get"];
         /** Replace Role Permissions */
         put: operations["replace_role_permissions_api_v1_roles__role_id__permissions_put"];
         post?: never;
@@ -612,6 +616,11 @@ export interface components {
             /** Total */
             total: number;
         };
+        /**
+         * OptionsSourceType
+         * @enum {string}
+         */
+        OptionsSourceType: "list" | "grouped_catalog";
         /** PaginationCapability */
         PaginationCapability: {
             /** Default Limit */
@@ -623,6 +632,8 @@ export interface components {
         PermissionGroupRead: {
             /** Name */
             name: string;
+            /** Label */
+            label: string;
             /** Permissions */
             permissions: components["schemas"]["PermissionRead"][];
         };
@@ -630,6 +641,8 @@ export interface components {
         PermissionRead: {
             /** Access */
             access: string;
+            /** Label */
+            label: string;
             /** Description */
             description?: string | null;
         };
@@ -676,6 +689,24 @@ export interface components {
              * Format: email
              */
             email: string;
+        };
+        /**
+         * RelationCardinality
+         * @enum {string}
+         */
+        RelationCardinality: "multiple";
+        /**
+         * RelationOptionsSource
+         * @description Origen declarado del universo de opciones de un editor relacional.
+         */
+        RelationOptionsSource: {
+            type: components["schemas"]["OptionsSourceType"];
+            /** Url */
+            url: string;
+            /** Value Field */
+            value_field: string;
+            /** Label Field */
+            label_field: string;
         };
         /** ResetPasswordRequest */
         ResetPasswordRequest: {
@@ -726,6 +757,11 @@ export interface components {
              * @default []
              */
             actions: components["schemas"]["ResourceActionCapability"][];
+            /**
+             * Relations
+             * @default []
+             */
+            relations: components["schemas"]["ResourceRelationCapability"][];
         };
         /** ResourceFieldCapability */
         ResourceFieldCapability: {
@@ -808,6 +844,36 @@ export interface components {
             sort: components["schemas"]["SortCapability"];
         };
         /**
+         * ResourceRelationCapability
+         * @description Editor relacional declarado por el backend (p. ej. roles de un usuario).
+         *
+         *     El frontend no infiere rutas ni cardinalidad desde nombres: consume estas URLs
+         *     y campos. ``selection_url`` y ``mutation_url`` son plantillas con ``{id}`` del
+         *     recurso dueño. ``request_field`` es el campo del cuerpo que transporta la lista
+         *     completa de valores objetivo (reemplazo atómico).
+         */
+        ResourceRelationCapability: {
+            /** Name */
+            name: string;
+            /** Label */
+            label: string;
+            /** Description */
+            description?: string | null;
+            cardinality: components["schemas"]["RelationCardinality"];
+            /** Required */
+            required: boolean;
+            /** Editable */
+            editable: boolean;
+            /** Selection Url */
+            selection_url: string;
+            mutation_method: components["schemas"]["HttpMethod"];
+            /** Mutation Url */
+            mutation_url: string;
+            /** Request Field */
+            request_field: string;
+            options: components["schemas"]["RelationOptionsSource"];
+        };
+        /**
          * ResourceView
          * @enum {string}
          */
@@ -873,6 +939,14 @@ export interface components {
             created_at: string;
             /** Actualizado */
             updated_at?: string | null;
+        };
+        /**
+         * RolePermissionsRead
+         * @description Selección actual de permisos de un rol (lectura para el editor relacional).
+         */
+        RolePermissionsRead: {
+            /** Permissions */
+            permissions: string[];
         };
         /**
          * RolePermissionsReplace
@@ -1766,6 +1840,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RoleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_role_permissions_api_v1_roles__role_id__permissions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role_id: string;
+            };
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RolePermissionsRead"];
                 };
             };
             /** @description Validation Error */
