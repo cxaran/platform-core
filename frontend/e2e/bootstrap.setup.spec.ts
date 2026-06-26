@@ -4,6 +4,7 @@ import { test, expect, type Page, type APIRequestContext, type BrowserContext } 
 
 const adminEmail = "admin.e2e@example.com";
 const adminPassword = "E2e-password-123";
+const adminNewPassword = "E2e-newpassword-456";
 const standardEmail = "usuario.e2e@example.com";
 const updatedEmail = "usuario.actualizado@example.com";
 const standardPassword = "User-password-123";
@@ -493,6 +494,48 @@ test.describe.serial("fresh install bootstrap and admin relations", () => {
       `);
       const declaredPermissions = queryScalar("select count(distinct access) from role_access;");
       expect(systemAdminPermissions).toBe(declaredPermissions);
+    });
+
+    // Los flujos de cuenta van al final: cambiar contraseña y cerrar sesión
+    // invalidan la sesión administrativa que usan los pasos anteriores.
+    await test.step("Mi cuenta: editar perfil propio", async () => {
+      await page.goto("/");
+      await page.getByRole("link", { name: "Mi cuenta" }).click();
+      await expect(page).toHaveURL(/\/account$/);
+      await expect(page.getByRole("heading", { name: "Mi cuenta" })).toBeVisible();
+
+      await page.getByLabel("Nombre").fill("AdminEditado");
+      await page.getByRole("button", { name: "Guardar perfil" }).click();
+      await expect(page.getByText("Perfil actualizado.")).toBeVisible();
+
+      expect(queryScalar(`select name from "user" where email = '${adminEmail}';`)).toBe(
+        "AdminEditado",
+      );
+    });
+
+    await test.step("Cambiar contraseña invalida la sesión y exige re-login", async () => {
+      await page.getByLabel("Contraseña actual", { exact: true }).fill(adminPassword);
+      await page.getByLabel("Nueva contraseña", { exact: true }).fill(adminNewPassword);
+      await page.getByLabel("Confirmar nueva contraseña", { exact: true }).fill(adminNewPassword);
+      await page.getByRole("button", { name: "Cambiar contraseña" }).click();
+
+      // La sesión queda invalidada: la app envía a login.
+      await expect(page).toHaveURL(/\/login$/);
+
+      // La contraseña anterior ya no sirve; la nueva sí.
+      await login(page, adminEmail, adminPassword);
+      await expect(page).toHaveURL(/\/login$/);
+      await login(page, adminEmail, adminNewPassword);
+      await expect(page).toHaveURL(/\/$/);
+      await expect(page.getByText("Platform Core")).toBeVisible();
+    });
+
+    await test.step("Logout cierra la sesión y protege rutas", async () => {
+      await page.getByRole("button", { name: "Cerrar sesión" }).click();
+      await expect(page).toHaveURL(/\/login$/);
+
+      await page.goto("/account");
+      await expect(page).toHaveURL(/\/login$/);
     });
   });
 });
