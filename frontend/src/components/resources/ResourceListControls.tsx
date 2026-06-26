@@ -1,7 +1,173 @@
 import type { ResourceListCapability } from "@/core/api/contracts";
-import type { FilterControls } from "@/core/resources/list-query";
+import type {
+  FilterableControls,
+  FilterableFieldControl,
+  FilterableOperatorControl,
+} from "@/core/resources/filterable";
 
 type SearchCapability = ResourceListCapability["search"];
+
+const INPUT_CLASS = "rounded-md border border-slate-300 px-3 py-2 text-sm";
+const LABEL_CLASS = "mb-1 text-xs font-medium text-slate-600";
+
+function fieldValue(filters: Record<string, string>, parameter?: string): string {
+  return parameter ? (filters[parameter] ?? "") : "";
+}
+
+function SelectControl({
+  id,
+  label,
+  parameter,
+  options,
+  value,
+}: Readonly<{
+  id: string;
+  label: string;
+  parameter: string;
+  options: readonly { value: string; label: string }[];
+  value: string;
+}>) {
+  return (
+    <div className="flex flex-col">
+      <label htmlFor={id} className={LABEL_CLASS}>
+        {label}
+      </label>
+      <select id={id} name={parameter} defaultValue={value} className={INPUT_CLASS}>
+        <option value="">Todos</option>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function InputControl({
+  id,
+  label,
+  parameter,
+  type,
+  value,
+  placeholder,
+}: Readonly<{
+  id: string;
+  label: string;
+  parameter: string;
+  type: "text" | "date";
+  value: string;
+  placeholder?: string;
+}>) {
+  return (
+    <div className="flex flex-col">
+      <label htmlFor={id} className={LABEL_CLASS}>
+        {label}
+      </label>
+      <input
+        id={id}
+        name={parameter}
+        type={type}
+        defaultValue={value}
+        placeholder={placeholder}
+        maxLength={type === "text" ? 200 : undefined}
+        className={INPUT_CLASS}
+      />
+    </div>
+  );
+}
+
+function OperatorControl({
+  field,
+  operator,
+  filters,
+}: Readonly<{
+  field: FilterableFieldControl;
+  operator: FilterableOperatorControl;
+  filters: Record<string, string>;
+}>) {
+  const label = `${field.label} · ${operator.label}`;
+  const baseId = `filter-${field.key}-${operator.key}`;
+
+  if (operator.widget === "daterange") {
+    return (
+      <>
+        <InputControl
+          id={`${baseId}-from`}
+          label={`${label} (desde)`}
+          parameter={operator.fromParameter ?? ""}
+          type="date"
+          value={fieldValue(filters, operator.fromParameter)}
+        />
+        <InputControl
+          id={`${baseId}-to`}
+          label={`${label} (hasta)`}
+          parameter={operator.toParameter ?? ""}
+          type="date"
+          value={fieldValue(filters, operator.toParameter)}
+        />
+      </>
+    );
+  }
+
+  const parameter = operator.parameterName ?? "";
+  if (operator.widget === "select") {
+    return (
+      <SelectControl
+        id={baseId}
+        label={label}
+        parameter={parameter}
+        options={operator.options ?? []}
+        value={fieldValue(filters, operator.parameterName)}
+      />
+    );
+  }
+
+  return (
+    <InputControl
+      id={baseId}
+      label={label}
+      parameter={parameter}
+      type={operator.widget === "date" ? "date" : "text"}
+      value={fieldValue(filters, operator.parameterName)}
+      placeholder={operator.placeholder}
+    />
+  );
+}
+
+function FieldControl({
+  field,
+  filters,
+}: Readonly<{ field: FilterableFieldControl; filters: Record<string, string> }>) {
+  // Campo de un solo operador select (p. ej. is_active): un control compacto con el
+  // label del campo, sin envoltorio de fieldset.
+  const [first] = field.operators;
+  if (field.operators.length === 1 && first.widget === "select") {
+    return (
+      <SelectControl
+        id={`filter-${field.key}-${first.key}`}
+        label={field.label}
+        parameter={first.parameterName ?? ""}
+        options={first.options ?? []}
+        value={fieldValue(filters, first.parameterName)}
+      />
+    );
+  }
+
+  return (
+    <fieldset className="flex flex-wrap items-end gap-3 rounded-md border border-slate-200 p-3">
+      <legend className="px-1 text-xs font-semibold text-slate-700">{field.label}</legend>
+      {field.operators.map((operator) => (
+        <OperatorControl
+          key={`${field.key}-${operator.key}`}
+          field={field}
+          operator={operator}
+          filters={filters}
+        />
+      ))}
+    </fieldset>
+  );
+}
 
 export function ResourceListControls({
   resourceName,
@@ -15,7 +181,7 @@ export function ResourceListControls({
 }: Readonly<{
   resourceName: string;
   search: SearchCapability;
-  controls: FilterControls;
+  controls: FilterableControls;
   filters: Record<string, string>;
   searchValue: string;
   searchTooShort: boolean;
@@ -35,7 +201,7 @@ export function ResourceListControls({
     <form method="get" action={action} className="flex flex-wrap items-end gap-4">
       {hasSearch ? (
         <div className="flex flex-col">
-          <label htmlFor="q" className="mb-1 text-xs font-medium text-slate-600">
+          <label htmlFor="q" className={LABEL_CLASS}>
             Buscar
           </label>
           <input
@@ -56,28 +222,8 @@ export function ResourceListControls({
         </div>
       ) : null}
 
-      {controls.ordered.map((control) => (
-        <div key={control.parameter} className="flex flex-col">
-          <label
-            htmlFor={`filter-${control.parameter}`}
-            className="mb-1 text-xs font-medium text-slate-600"
-          >
-            {control.label}
-          </label>
-          <select
-            id={`filter-${control.parameter}`}
-            name={control.parameter}
-            defaultValue={filters[control.parameter] ?? ""}
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-          >
-            <option value="">Todos</option>
-            {control.options.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </div>
+      {controls.ordered.map((field) => (
+        <FieldControl key={field.key} field={field} filters={filters} />
       ))}
 
       {/* Preserva sort explícito y límite; sin offset → reinicia en 0. */}

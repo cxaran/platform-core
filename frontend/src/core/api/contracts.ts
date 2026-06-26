@@ -14,6 +14,11 @@ export type ResourceListCapability = components["schemas"]["ResourceListCapabili
 export type ResourceFieldCapability = components["schemas"]["ResourceFieldCapability"];
 export type ResourceFilterCapability = components["schemas"]["ResourceFilterCapability"];
 export type ResourceFilterOption = components["schemas"]["ResourceFilterOption"];
+export type FilterableFieldCapability = components["schemas"]["FilterableFieldCapability"];
+export type FilterableOperatorCapability =
+  components["schemas"]["FilterableOperatorCapability"];
+export type FilterableRangeParameters = components["schemas"]["FilterableRangeParameters"];
+export type FilterValueShape = components["schemas"]["FilterValueShape"];
 export type ResourceFormsCapability = components["schemas"]["ResourceFormsCapability"];
 export type ResourceFormCapability = components["schemas"]["ResourceFormCapability"];
 export type ResourceFormFieldCapability =

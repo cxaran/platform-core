@@ -7,7 +7,7 @@ import { ApiRequestError } from "@/core/api/api-error";
 import type { ResourceCapability } from "@/core/api/contracts";
 import { serverApi } from "@/core/api/server-client";
 import {
-  buildFilterControls,
+  buildFilterableControls,
   buildListSearchParams,
   type ResourceListQuery,
 } from "@/core/resources/list-query";
@@ -100,7 +100,7 @@ export async function getResourceListPage(
   assertInternalApiPath(capability.api_path);
   // Reconstruye los controles desde la capability para serializar con una allowlist
   // ordenada (nunca itera query.filters directamente).
-  const controls = buildFilterControls(capability.list);
+  const controls = buildFilterableControls(capability.list);
   const url = `${capability.api_path}?${buildListSearchParams(query, controls).toString()}`;
   const cookie = (await cookies()).toString();
 

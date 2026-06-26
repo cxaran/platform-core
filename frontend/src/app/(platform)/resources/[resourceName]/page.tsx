@@ -8,7 +8,7 @@ import { ResourceTable } from "@/components/resources/ResourceTable";
 import { requireSession } from "@/core/auth/session";
 import { getResourceCapability } from "@/core/resources/capabilities-client";
 import {
-  buildFilterControls,
+  buildFilterableControls,
   buildPageHref,
   buildSortHref,
   parseListQuery,
@@ -50,8 +50,8 @@ export default async function ResourcePage({ params, searchParams }: PageProps) 
   }
   const list = capability.list;
 
-  // Capability inválida → FilterContractError → error boundary (no notFound).
-  const controls = buildFilterControls(list);
+  // Capability inválida → FilterableContractError → error boundary (no notFound).
+  const controls = buildFilterableControls(list);
   const query = parseListQuery(rawSearchParams, list, controls);
   const page = await getResourceListPage(capability, query);
   if (!page) {
