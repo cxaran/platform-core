@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 
+import { GroupedCatalog } from "@/components/resources/GroupedCatalog";
 import { ResourceListControls } from "@/components/resources/ResourceListControls";
 import { ResourcePagination } from "@/components/resources/ResourcePagination";
 import { ResourceTable } from "@/components/resources/ResourceTable";
@@ -13,6 +14,7 @@ import {
   parseListQuery,
   parseSearchField,
 } from "@/core/resources/list-query";
+import { getPermissionsCatalog } from "@/core/resources/permissions-catalog-client";
 import { getResourceListPage } from "@/core/resources/resource-list-client";
 
 type PageProps = {
@@ -26,7 +28,24 @@ export default async function ResourcePage({ params, searchParams }: PageProps) 
   const rawSearchParams = await searchParams;
 
   const capability = await getResourceCapability(resourceName);
-  if (!capability || capability.view !== "table" || !capability.list) {
+  if (!capability) {
+    notFound();
+  }
+
+  if (capability.view === "grouped_catalog") {
+    const catalog = await getPermissionsCatalog(capability.api_path);
+    if (!catalog) {
+      notFound();
+    }
+    return (
+      <div className="space-y-4">
+        <h1 className="text-xl font-semibold text-slate-900">{capability.label}</h1>
+        <GroupedCatalog label={capability.label} catalog={catalog} />
+      </div>
+    );
+  }
+
+  if (capability.view !== "table" || !capability.list) {
     notFound();
   }
   const list = capability.list;
