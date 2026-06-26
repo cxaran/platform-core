@@ -1,8 +1,15 @@
 from pydantic import BaseModel, EmailStr, Field, SecretStr, field_validator, model_validator
 from typing_extensions import Annotated, Self
 
-from backend.app.schemas.base import ApiSchema, ApiWriteSchema
+from backend.app.schemas.base import ApiReadSchema, ApiSchema, ApiWriteSchema
 from backend.app.schemas.user import validate_password
+
+
+class AuthPolicyRead(ApiReadSchema):
+    """Política pública de auth que el frontend consume (no infiere de settings)."""
+
+    registration_enabled: bool
+    password_reset_enabled: bool
 
 
 class LoginRequest(ApiWriteSchema):

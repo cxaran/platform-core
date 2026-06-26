@@ -35,6 +35,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Auth Policy
+         * @description Política pública de auth. El frontend la consume; no infiere de settings.
+         */
+        get: operations["read_auth_policy_api_v1_auth_policy_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/me": {
         parameters: {
             query?: never;
@@ -487,6 +507,16 @@ export interface components {
          * @enum {string}
          */
         ActionSuccessBehavior: "refresh";
+        /**
+         * AuthPolicyRead
+         * @description Política pública de auth que el frontend consume (no infiere de settings).
+         */
+        AuthPolicyRead: {
+            /** Registration Enabled */
+            registration_enabled: boolean;
+            /** Password Reset Enabled */
+            password_reset_enabled: boolean;
+        };
         /** BootstrapAdditionalRole */
         BootstrapAdditionalRole: {
             /** Name */
@@ -1355,6 +1385,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReadinessRead"];
+                };
+            };
+        };
+    };
+    read_auth_policy_api_v1_auth_policy_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthPolicyRead"];
                 };
             };
         };

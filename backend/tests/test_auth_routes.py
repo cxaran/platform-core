@@ -47,6 +47,7 @@ class AuthRoutesTest(unittest.TestCase):
 
         self.assertIn("/api/v1/auth/login", paths)
         self.assertIn("/api/v1/auth/logout", paths)
+        self.assertIn("/api/v1/auth/policy", paths)
         self.assertIn("/api/v1/auth/me", paths)
         self.assertIn("/api/v1/auth/register/request", paths)
         self.assertIn("/api/v1/auth/register/complete", paths)

@@ -68,6 +68,13 @@ class Settings(BaseSettings):
     rate_limit_reset_token: str = "5/900"
     rate_limit_bootstrap_ip: str = "5/900"
 
+    # Política pública de auth. Platform Core no asume signup público: el registro
+    # está deshabilitado por defecto y debe habilitarse explícitamente por ambiente.
+    # Al completarse un registro, el usuario queda ACTIVO pero SIN roles (sin acceso
+    # hasta que un administrador le asigne uno) y SIN sesión automática.
+    registration_enabled: bool = False
+    password_reset_enabled: bool = True
+
     postgres_user: str
     postgres_password: str
     postgres_server: str
