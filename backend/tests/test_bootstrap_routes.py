@@ -235,7 +235,12 @@ class BootstrapRoutesTest(unittest.TestCase):
         second = self.client.post("/api/v1/bootstrap/initialize", json=self._payload())
 
         self.assertEqual(invalid.status_code, 422)
-        self.assertEqual(invalid.json()["code"], "invalid_permission")
+        invalid_body = invalid.json()
+        # Error de dominio: envelope con código y mensaje seguro, sin lista de campos.
+        # El wizard depende de esta forma para mostrar el mensaje real (no el genérico).
+        self.assertEqual(invalid_body["code"], "invalid_permission")
+        self.assertTrue(invalid_body["message"])
+        self.assertNotIn("errors", invalid_body)
         self.assertEqual(first.status_code, 201)
         self.assertEqual(second.status_code, 409)
 

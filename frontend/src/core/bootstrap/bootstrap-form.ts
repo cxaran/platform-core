@@ -35,7 +35,11 @@ export type BootstrapWizardDraft = {
 
 export type WizardFieldErrors = Record<string, string[]>;
 
-const WIZARD_FIELDS = new Set([
+// Campos mapeables de forma fiable a un control visible y único del wizard. Los
+// de ``additional_roles`` se excluyen a propósito: al normalizar el error se colapsa
+// el índice (``additional_roles.0.name`` → ``additional_roles.name``), por lo que no
+// se puede asignar el error al rol correcto; se reportan como error general seguro.
+const RELIABLE_WIZARD_FIELDS = new Set([
   "user.name",
   "user.last_name",
   "user.email",
@@ -43,11 +47,21 @@ const WIZARD_FIELDS = new Set([
   "user.confirm_password",
   "system_admin_role.label",
   "system_admin_role.description",
-  "additional_roles.name",
-  "additional_roles.description",
-  "additional_roles.permissions",
-  "additional_roles.assign_to_initial_user",
 ]);
+
+// Códigos de error de dominio del Bootstrap cuyo ``message`` es texto seguro y útil
+// para mostrar al usuario (definidos en backend/app/bootstrap/service.py).
+const SAFE_BOOTSTRAP_MESSAGE_CODES = new Set([
+  "invalid_permission",
+  "duplicate_role",
+  "invalid_role_name",
+  "too_many_roles",
+  "invalid_field",
+]);
+
+const GENERIC_BOOTSTRAP_ERROR = "No se pudo completar Bootstrap. Inténtalo nuevamente.";
+const ADDITIONAL_ROLES_ERROR =
+  "Revisa los roles adicionales: hay datos inválidos en su configuración.";
 
 export function emptyBootstrapDraft(): BootstrapWizardDraft {
   return {
@@ -126,27 +140,42 @@ export function parseBootstrapFormError(
     return { redirectToLogin: true, general: null, fields: {} };
   }
 
+  // Error de dominio del servicio: 422 con código y mensaje seguro pero sin lista de
+  // errores por campo (p. ej. permisos no declarados, roles duplicados). Se muestra
+  // el mensaje del backend en vez del genérico, que ocultaba la causa real.
+  if (error.status === 422 && !(error.body.errors && error.body.errors.length > 0)) {
+    const general = SAFE_BOOTSTRAP_MESSAGE_CODES.has(error.body.code)
+      ? error.body.message
+      : GENERIC_BOOTSTRAP_ERROR;
+    return { redirectToLogin: false, general, fields: {} };
+  }
+
   if (error.status === 422 && error.body.errors) {
     const fields: WizardFieldErrors = {};
+    let rolesIssue = false;
     let hasUndeclaredFieldError = false;
     for (const item of error.body.errors) {
       const field = normalizeErrorField(item.field);
-      if (field && WIZARD_FIELDS.has(field)) {
+      if (field && RELIABLE_WIZARD_FIELDS.has(field)) {
         fields[field] = [...(fields[field] ?? []), item.message];
+      } else if (field && field.startsWith("additional_roles")) {
+        rolesIssue = true;
       } else {
         hasUndeclaredFieldError = true;
       }
     }
-    return {
-      redirectToLogin: false,
-      general: hasUndeclaredFieldError ? "No se pudo completar Bootstrap. Inténtalo nuevamente." : null,
-      fields,
-    };
+    let general: string | null = null;
+    if (rolesIssue) {
+      general = ADDITIONAL_ROLES_ERROR;
+    } else if (hasUndeclaredFieldError) {
+      general = GENERIC_BOOTSTRAP_ERROR;
+    }
+    return { redirectToLogin: false, general, fields };
   }
 
   return {
     redirectToLogin: false,
-    general: "No se pudo completar Bootstrap. Inténtalo nuevamente.",
+    general: GENERIC_BOOTSTRAP_ERROR,
     fields: {},
   };
 }

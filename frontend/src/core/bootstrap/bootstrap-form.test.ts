@@ -60,6 +60,29 @@ test("buildBootstrapPayload excludes token and system admin permissions", () => 
   assert.deepEqual(payload.additional_roles![0]?.permissions, ["users:read"]);
 });
 
+test("buildBootstrapPayload includes every required field of the request contract", () => {
+  const draft = emptyBootstrapDraft();
+  draft.user.name = "Admin";
+  draft.user.last_name = "Platform";
+  draft.user.email = "admin@example.com";
+  draft.user.password = "admin-password-123";
+  draft.user.confirm_password = "admin-password-123";
+
+  const payload = buildBootstrapPayload(draft);
+
+  assert.deepEqual(Object.keys(payload.user!).sort(), [
+    "confirm_password",
+    "email",
+    "last_name",
+    "name",
+    "password",
+  ]);
+  assert.equal(payload.system_admin_role!.label, "Administrador de plataforma");
+  assert.ok(Array.isArray(payload.additional_roles));
+  assert.equal("token" in payload, false);
+  assert.equal("token" in payload.user!, false);
+});
+
 test("buildBootstrapPayload ignores injected DOM-like fields", () => {
   const draft = emptyBootstrapDraft() as never as ReturnType<typeof emptyBootstrapDraft> & {
     is_admin: boolean;
@@ -118,4 +141,52 @@ test("parseBootstrapFormError only exposes declared field errors", () => {
 
   assert.deepEqual(parsed.fields["user.email"], ["Email inválido"]);
   assert.equal(parsed.general?.includes("token leaked"), false);
+});
+
+test("parseBootstrapFormError surfaces safe domain message for service errors", () => {
+  const parsed = parseBootstrapFormError(
+    new ApiRequestError(422, {
+      code: "duplicate_role",
+      message: "Los roles iniciales deben tener nombres unicos.",
+    }),
+  );
+
+  assert.equal(parsed.general, "Los roles iniciales deben tener nombres unicos.");
+  assert.deepEqual(parsed.fields, {});
+});
+
+test("parseBootstrapFormError surfaces invalid_permission message", () => {
+  const parsed = parseBootstrapFormError(
+    new ApiRequestError(422, {
+      code: "invalid_permission",
+      message: "El rol contiene permisos no declarados.",
+    }),
+  );
+
+  assert.equal(parsed.general, "El rol contiene permisos no declarados.");
+});
+
+test("parseBootstrapFormError hides unknown 422 messages behind a generic error", () => {
+  const parsed = parseBootstrapFormError(
+    new ApiRequestError(422, { code: "weird_internal", message: "secret stack trace" }),
+  );
+
+  assert.equal(parsed.general?.includes("secret stack trace"), false);
+  assert.ok(parsed.general && parsed.general.length > 0);
+});
+
+test("parseBootstrapFormError reports additional role field errors as safe general", () => {
+  const parsed = parseBootstrapFormError(
+    new ApiRequestError(422, {
+      code: "validation_error",
+      message: "Parámetros inválidos",
+      errors: [
+        { field: "body.additional_roles.0.name", message: "String should have at least 1 character" },
+      ],
+    }),
+  );
+
+  // No se mapea a un campo (el índice no es fiable); se reporta general seguro.
+  assert.deepEqual(parsed.fields, {});
+  assert.ok(parsed.general && parsed.general.includes("roles adicionales"));
 });
