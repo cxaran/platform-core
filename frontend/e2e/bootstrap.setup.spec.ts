@@ -5,8 +5,10 @@ import { test, expect, type Page, type APIRequestContext, type BrowserContext } 
 const adminEmail = "admin.e2e@example.com";
 const adminPassword = "E2e-password-123";
 const standardEmail = "usuario.e2e@example.com";
+const updatedEmail = "usuario.actualizado@example.com";
 const standardPassword = "User-password-123";
 const supportRoleName = "Soporte E2E";
+const updatedRoleName = "Soporte Actualizado";
 const systemAdminRoleName = "Administrador de plataforma";
 const appBaseUrl = process.env.E2E_BASE_URL ?? "http://127.0.0.1:31080";
 const repoRoot = resolve(process.cwd(), "..");
@@ -62,12 +64,17 @@ async function login(page: Page, email: string, password: string) {
   await page.getByRole("button", { name: "Ingresar" }).click();
 }
 
-// Abre el editor relacional de una fila (por email visible) y su relación.
-async function openRowRelation(page: Page, rowText: string, relationLabel: string) {
-  await page.goto("/resources/users");
+// Abre una acción de fila (editar o editor relacional) navegando primero al listado.
+async function openRowAction(
+  page: Page,
+  listPath: string,
+  rowText: string,
+  actionLabel: string,
+) {
+  await page.goto(listPath);
   await page
     .getByRole("row", { name: new RegExp(rowText) })
-    .getByRole("link", { name: relationLabel })
+    .getByRole("link", { name: actionLabel })
     .click();
 }
 
@@ -171,7 +178,7 @@ test.describe.serial("fresh install bootstrap and admin relations", () => {
     });
 
     await test.step("Asignar rol al usuario con el editor relacional", async () => {
-      await openRowRelation(page, standardEmail, "Roles");
+      await openRowAction(page, "/resources/users", standardEmail, "Roles");
       await expect(page).toHaveURL(/\/roles$/);
       await page.getByLabel(supportRoleName).check();
       await page.getByRole("button", { name: "Guardar" }).click();
@@ -197,7 +204,7 @@ test.describe.serial("fresh install bootstrap and admin relations", () => {
       const tokenBefore = queryScalar(`select token from "user" where email = '${standardEmail}';`);
 
       // El administrador retira el rol: rota el token del usuario afectado.
-      await openRowRelation(page, standardEmail, "Roles");
+      await openRowAction(page, "/resources/users", standardEmail, "Roles");
       await page.getByLabel(supportRoleName).uncheck();
       await page.getByRole("button", { name: "Guardar" }).click();
       await expect(page).toHaveURL(/\/resources\/users$/);
@@ -212,7 +219,7 @@ test.describe.serial("fresh install bootstrap and admin relations", () => {
     });
 
     await test.step("Bloquear la pérdida del último administrador", async () => {
-      await openRowRelation(page, adminEmail, "Roles");
+      await openRowAction(page, "/resources/users", adminEmail, "Roles");
       await expect(page).toHaveURL(/\/roles$/);
       await page.getByLabel(systemAdminRoleName).uncheck();
       await page.getByRole("button", { name: "Guardar" }).click();
@@ -237,6 +244,80 @@ test.describe.serial("fresh install bootstrap and admin relations", () => {
       await expect(page.getByRole("heading", { name: "Usuarios" })).toBeVisible();
     });
 
+    await test.step("Editar rol con generic update", async () => {
+      await openRowAction(page, "/resources/roles", supportRoleName, "Editar");
+      await expect(page).toHaveURL(/\/edit$/);
+      await expect(page.getByRole("heading", { name: "Editar Roles" })).toBeVisible();
+      await page.getByLabel("Nombre").fill(updatedRoleName);
+      await page.getByLabel("Descripción").fill("Rol actualizado desde generic update");
+      await page.getByRole("button", { name: "Guardar" }).click();
+      await expect(page).toHaveURL(/\/resources\/roles$/);
+      await expect(page.getByText(updatedRoleName)).toBeVisible();
+
+      expect(queryScalar(`select count(*) from role where name = '${updatedRoleName}';`)).toBe("1");
+      expect(queryScalar(`select count(*) from role where name = '${supportRoleName}';`)).toBe("0");
+    });
+
+    await test.step("Editar usuario con generic update", async () => {
+      await openRowAction(page, "/resources/users", standardEmail, "Editar");
+      await expect(page).toHaveURL(/\/edit$/);
+      await expect(page.getByRole("heading", { name: "Editar Usuarios" })).toBeVisible();
+      await page.getByLabel("Nombre").fill("Usuario");
+      await page.getByLabel("Apellido").fill("Actualizado");
+      await page.getByRole("button", { name: "Guardar" }).click();
+      await expect(page).toHaveURL(/\/resources\/users$/);
+      await expect(page.getByText("Actualizado")).toBeVisible();
+
+      expect(
+        queryScalar(
+          `select count(*) from "user" where email = '${standardEmail}' and last_name = 'Actualizado';`,
+        ),
+      ).toBe("1");
+    });
+
+    await test.step("Cambiar email invalida la sesión previa del usuario", async () => {
+      const userContext: BrowserContext = await context.browser()!.newContext({ baseURL: appBaseUrl });
+      const userPage = await userContext.newPage();
+      await login(userPage, standardEmail, standardPassword);
+      await expect(userPage).toHaveURL(/\/$/);
+
+      const tokenBefore = queryScalar(`select token from "user" where email = '${standardEmail}';`);
+
+      await openRowAction(page, "/resources/users", standardEmail, "Editar");
+      await expect(page).toHaveURL(/\/edit$/);
+      // Se acota al formulario: el enlace de orden de la tabla expone aria-label
+      // "Ordenar por Correo...", que de otro modo colisiona con getByLabel("Correo").
+      await page
+        .getByRole("form", { name: "Editar Usuarios" })
+        .getByLabel("Correo")
+        .fill(updatedEmail);
+      await page.getByRole("button", { name: "Guardar" }).click();
+      await expect(page).toHaveURL(/\/resources\/users$/);
+
+      const tokenAfter = queryScalar(`select token from "user" where email = '${updatedEmail}';`);
+      expect(tokenAfter).not.toBe(tokenBefore);
+
+      await userPage.goto("/");
+      await expect(userPage).toHaveURL(/\/login$/);
+      await userContext.close();
+    });
+
+    await test.step("Bloquear desactivar al último administrador vía update", async () => {
+      await openRowAction(page, "/resources/users", adminEmail, "Editar");
+      await expect(page).toHaveURL(/\/edit$/);
+      await expect(page.getByLabel("Activo")).toBeChecked();
+      await page.getByLabel("Activo").uncheck();
+      await page.getByRole("button", { name: "Guardar" }).click();
+
+      await expect(
+        page.getByRole("form", { name: "Editar Usuarios" }).getByRole("alert"),
+      ).toContainText("cobertura administrativa");
+
+      expect(queryScalar(`select is_active from "user" where email = '${adminEmail}';`)).toBe("t");
+      await page.goto("/resources/users");
+      await expect(page.getByRole("heading", { name: "Usuarios" })).toBeVisible();
+    });
+
     await test.step("Bootstrap cerrado y datos persistidos", async () => {
       await page.goto("/setup");
       await expect(page).toHaveURL(/\/$/);
@@ -250,8 +331,8 @@ test.describe.serial("fresh install bootstrap and admin relations", () => {
       expect(queryScalar("select status from platform_setup where id = 1;")).toBe("completed");
       expect(queryScalar('select count(*) from "user";')).toBe("2");
       expect(queryScalar("select count(*) from role;")).toBe("3");
-      expect(queryScalar(`select count(*) from role where name = '${supportRoleName}';`)).toBe("1");
-      expect(queryScalar(`select count(*) from "user" where email = '${standardEmail}';`)).toBe("1");
+      expect(queryScalar(`select count(*) from role where name = '${updatedRoleName}';`)).toBe("1");
+      expect(queryScalar(`select count(*) from "user" where email = '${updatedEmail}';`)).toBe("1");
       const systemAdminPermissions = queryScalar(`
         select count(*)
         from role_access ra
