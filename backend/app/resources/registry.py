@@ -76,9 +76,25 @@ ROLES = ResourceQuery(
 
 
 @dataclass(frozen=True)
+class ConfirmationDef:
+    """Confirmación declarada de una acción (diálogo accesible en el frontend)."""
+
+    title: str
+    message: str
+    confirm_label: str
+    destructive: bool
+    required: bool = True
+
+
+@dataclass(frozen=True)
 class ActionDef:
     """Acción declarada de un recurso. ``permission`` es un control de seguridad
-    existente (miembro de ``SecurityGroup``); se filtra con ``.check(current_user)``."""
+    existente (miembro de ``SecurityGroup``); se filtra con ``.check(current_user)``.
+
+    ``fixed_body`` declara el cuerpo exacto que el frontend debe enviar (p. ej.
+    ``{"is_active": False}`` para reutilizar el PATCH de actualización como
+    desactivación). El frontend no puede modificarlo ni reutilizar la acción para
+    otro payload."""
 
     name: str
     label: str
@@ -87,6 +103,8 @@ class ActionDef:
     scope: ActionScope
     danger: bool
     permission: SecurityGroup
+    fixed_body: Optional[dict[str, object]] = None
+    confirmation: Optional[ConfirmationDef] = None
 
 
 @dataclass(frozen=True)
@@ -156,6 +174,42 @@ RESOURCE_REGISTRY: tuple[ResourceDefinition, ...] = (
         update_permission=UserPermissions.UPDATE,
         detail_url_template="/api/v1/users/{id}",
         actions=(
+            # Activate/deactivate reutilizan el PATCH de actualización con un cuerpo
+            # fijo: la supervivencia administrativa y la invalidación de sesiones ya
+            # viven ahí, sin endpoints nuevos que dupliquen reglas.
+            ActionDef(
+                name="activate",
+                label="Activar",
+                method=HttpMethod.PATCH,
+                url_template="/api/v1/users/{id}",
+                scope=ActionScope.ITEM,
+                danger=False,
+                permission=UserPermissions.UPDATE,
+                fixed_body={"is_active": True},
+                confirmation=ConfirmationDef(
+                    title="Activar usuario",
+                    message="El usuario recuperará acceso a la plataforma.",
+                    confirm_label="Activar",
+                    destructive=False,
+                    required=False,
+                ),
+            ),
+            ActionDef(
+                name="deactivate",
+                label="Desactivar",
+                method=HttpMethod.PATCH,
+                url_template="/api/v1/users/{id}",
+                scope=ActionScope.ITEM,
+                danger=True,
+                permission=UserPermissions.UPDATE,
+                fixed_body={"is_active": False},
+                confirmation=ConfirmationDef(
+                    title="Desactivar usuario",
+                    message="El usuario perderá acceso inmediatamente.",
+                    confirm_label="Desactivar",
+                    destructive=True,
+                ),
+            ),
             ActionDef(
                 name="revoke_sessions",
                 label="Revocar sesiones",
@@ -164,6 +218,12 @@ RESOURCE_REGISTRY: tuple[ResourceDefinition, ...] = (
                 scope=ActionScope.ITEM,
                 danger=True,
                 permission=UserPermissions.REVOKE_SESSIONS,
+                confirmation=ConfirmationDef(
+                    title="Revocar sesiones",
+                    message="Se cerrarán todas las sesiones activas del usuario.",
+                    confirm_label="Revocar",
+                    destructive=True,
+                ),
             ),
             ActionDef(
                 name="delete",
@@ -173,6 +233,12 @@ RESOURCE_REGISTRY: tuple[ResourceDefinition, ...] = (
                 scope=ActionScope.ITEM,
                 danger=True,
                 permission=UserPermissions.DELETE,
+                confirmation=ConfirmationDef(
+                    title="Eliminar usuario",
+                    message="El usuario será desactivado y perderá acceso.",
+                    confirm_label="Eliminar",
+                    destructive=True,
+                ),
             ),
         ),
         relations=(
@@ -210,6 +276,39 @@ RESOURCE_REGISTRY: tuple[ResourceDefinition, ...] = (
         detail_url_template="/api/v1/roles/{id}",
         actions=(
             ActionDef(
+                name="activate",
+                label="Activar",
+                method=HttpMethod.PATCH,
+                url_template="/api/v1/roles/{id}",
+                scope=ActionScope.ITEM,
+                danger=False,
+                permission=RolePermissions.UPDATE,
+                fixed_body={"is_active": True},
+                confirmation=ConfirmationDef(
+                    title="Activar rol",
+                    message="El rol y sus permisos volverán a estar disponibles.",
+                    confirm_label="Activar",
+                    destructive=False,
+                    required=False,
+                ),
+            ),
+            ActionDef(
+                name="deactivate",
+                label="Desactivar",
+                method=HttpMethod.PATCH,
+                url_template="/api/v1/roles/{id}",
+                scope=ActionScope.ITEM,
+                danger=True,
+                permission=RolePermissions.UPDATE,
+                fixed_body={"is_active": False},
+                confirmation=ConfirmationDef(
+                    title="Desactivar rol",
+                    message="Los usuarios con este rol perderán sus permisos.",
+                    confirm_label="Desactivar",
+                    destructive=True,
+                ),
+            ),
+            ActionDef(
                 name="delete",
                 label="Eliminar",
                 method=HttpMethod.DELETE,
@@ -217,6 +316,12 @@ RESOURCE_REGISTRY: tuple[ResourceDefinition, ...] = (
                 scope=ActionScope.ITEM,
                 danger=True,
                 permission=RolePermissions.DELETE,
+                confirmation=ConfirmationDef(
+                    title="Eliminar rol",
+                    message="El rol será desactivado y dejará de aplicarse.",
+                    confirm_label="Eliminar",
+                    destructive=True,
+                ),
             ),
         ),
         relations=(

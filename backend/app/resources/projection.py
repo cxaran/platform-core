@@ -27,6 +27,9 @@ from backend.app.resources.registry import (
     RESOURCE_REGISTRY,
 )
 from backend.app.schemas.capabilities import (
+    ActionConfirmation,
+    ActionRequestSpec,
+    ActionSuccessBehavior,
     FieldValueType,
     FilterOperator,
     HttpMethod,
@@ -402,6 +405,22 @@ def _forms_capability(
 
 
 def _action_capability(action: ActionDef) -> ResourceActionCapability:
+    request = (
+        ActionRequestSpec(content_type="application/json", fixed_body=action.fixed_body)
+        if action.fixed_body is not None
+        else None
+    )
+    confirmation = (
+        ActionConfirmation(
+            required=action.confirmation.required,
+            title=action.confirmation.title,
+            message=action.confirmation.message,
+            confirm_label=action.confirmation.confirm_label,
+            destructive=action.confirmation.destructive,
+        )
+        if action.confirmation is not None
+        else None
+    )
     return ResourceActionCapability(
         name=action.name,
         label=action.label,
@@ -409,6 +428,9 @@ def _action_capability(action: ActionDef) -> ResourceActionCapability:
         url_template=action.url_template,
         scope=action.scope,
         danger=action.danger,
+        request=request,
+        confirmation=confirmation,
+        success_behavior=ActionSuccessBehavior.REFRESH,
     )
 
 

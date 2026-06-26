@@ -425,11 +425,45 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ActionConfirmation */
+        ActionConfirmation: {
+            /** Required */
+            required: boolean;
+            /** Title */
+            title: string;
+            /** Message */
+            message: string;
+            /** Confirm Label */
+            confirm_label: string;
+            /** Destructive */
+            destructive: boolean;
+        };
+        /**
+         * ActionRequestSpec
+         * @description Cuerpo fijo declarado por backend para una acción.
+         *
+         *     El frontend envía exactamente ``fixed_body`` (o vacío si no hay request): no
+         *     puede agregar, quitar ni modificar campos, ni reutilizar la acción para otro
+         *     payload.
+         */
+        ActionRequestSpec: {
+            /** Content Type */
+            content_type: string;
+            /** Fixed Body */
+            fixed_body: {
+                [key: string]: unknown;
+            };
+        };
         /**
          * ActionScope
          * @enum {string}
          */
         ActionScope: "resource" | "item";
+        /**
+         * ActionSuccessBehavior
+         * @enum {string}
+         */
+        ActionSuccessBehavior: "refresh";
         /** BootstrapAdditionalRole */
         BootstrapAdditionalRole: {
             /** Name */
@@ -755,6 +789,10 @@ export interface components {
             scope: components["schemas"]["ActionScope"];
             /** Danger */
             danger: boolean;
+            request?: components["schemas"]["ActionRequestSpec"] | null;
+            confirmation?: components["schemas"]["ActionConfirmation"] | null;
+            /** @default refresh */
+            success_behavior: components["schemas"]["ActionSuccessBehavior"];
         };
         /** ResourceCapability */
         ResourceCapability: {

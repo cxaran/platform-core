@@ -14,7 +14,7 @@ Reglas del contrato:
 """
 
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import Field
 
@@ -160,6 +160,30 @@ class ResourceFormsCapability(ApiReadSchema):
     update: Optional[ResourceFormCapability] = None
 
 
+class ActionSuccessBehavior(str, Enum):
+    # Tras el éxito, refrescar el listado actual (re-fetch del Server Component).
+    REFRESH = "refresh"
+
+
+class ActionRequestSpec(ApiReadSchema):
+    """Cuerpo fijo declarado por backend para una acción.
+
+    El frontend envía exactamente ``fixed_body`` (o vacío si no hay request): no
+    puede agregar, quitar ni modificar campos, ni reutilizar la acción para otro
+    payload."""
+
+    content_type: str
+    fixed_body: dict[str, Any]
+
+
+class ActionConfirmation(ApiReadSchema):
+    required: bool
+    title: str
+    message: str
+    confirm_label: str
+    destructive: bool
+
+
 class ResourceActionCapability(ApiReadSchema):
     name: str
     label: str
@@ -167,6 +191,9 @@ class ResourceActionCapability(ApiReadSchema):
     url_template: str
     scope: ActionScope
     danger: bool
+    request: Optional[ActionRequestSpec] = None
+    confirmation: Optional[ActionConfirmation] = None
+    success_behavior: ActionSuccessBehavior = ActionSuccessBehavior.REFRESH
 
 
 class RelationOptionsSource(ApiReadSchema):

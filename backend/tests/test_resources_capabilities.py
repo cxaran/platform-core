@@ -245,6 +245,64 @@ class ResourceRelationsTest(unittest.TestCase):
         self.assertEqual(roles.get("relations", []), [])
 
 
+class ResourceActionContractTest(unittest.TestCase):
+    def _users_actions(self, *permissions: str) -> dict:
+        with _As(*permissions):
+            users = client.get("/api/v1/resources/users").json()
+        return {action["name"]: action for action in users["actions"]}
+
+    def test_deactivate_reuses_patch_with_fixed_body(self) -> None:
+        actions = self._users_actions("users:read", "users:update")
+        deactivate = actions["deactivate"]
+        self.assertEqual(deactivate["method"], "PATCH")
+        self.assertEqual(deactivate["url_template"], "/api/v1/users/{id}")
+        self.assertEqual(deactivate["request"]["content_type"], "application/json")
+        self.assertEqual(deactivate["request"]["fixed_body"], {"is_active": False})
+        self.assertEqual(deactivate["success_behavior"], "refresh")
+
+    def test_activate_reuses_patch_with_fixed_body(self) -> None:
+        actions = self._users_actions("users:read", "users:update")
+        self.assertEqual(actions["activate"]["request"]["fixed_body"], {"is_active": True})
+
+    def test_destructive_actions_require_confirmation(self) -> None:
+        actions = self._users_actions(
+            "users:read", "users:update", "users:revoke_sessions", "users:delete"
+        )
+        for name in ("deactivate", "revoke_sessions", "delete"):
+            confirmation = actions[name]["confirmation"]
+            self.assertTrue(confirmation["required"], name)
+            self.assertTrue(confirmation["destructive"], name)
+            self.assertTrue(confirmation["title"] and confirmation["confirm_label"], name)
+
+    def test_activate_confirmation_is_explicit_but_optional(self) -> None:
+        actions = self._users_actions("users:read", "users:update")
+        confirmation = actions["activate"]["confirmation"]
+        self.assertFalse(confirmation["required"])
+        self.assertFalse(confirmation["destructive"])
+
+    def test_revoke_sessions_has_no_fixed_body(self) -> None:
+        actions = self._users_actions("users:read", "users:revoke_sessions")
+        self.assertNotIn("request", actions["revoke_sessions"])
+
+    def test_update_actions_absent_without_update_permission(self) -> None:
+        actions = self._users_actions("users:read")
+        self.assertNotIn("activate", actions)
+        self.assertNotIn("deactivate", actions)
+
+    def test_permissions_resource_has_no_actions(self) -> None:
+        with _As("permissions:read"):
+            permissions = client.get("/api/v1/resources/permissions").json()
+        self.assertEqual(permissions["actions"], [])
+
+    def test_forging_capability_does_not_bypass_backend(self) -> None:
+        # Aunque el frontend forje una acción, el backend exige el permiso real.
+        with _As("users:read"):
+            response = client.patch(
+                f"/api/v1/users/{uuid.uuid4()}", json={"is_active": False}
+            )
+        self.assertEqual(response.status_code, 403)
+
+
 class ItemReferenceAndDetailTest(unittest.TestCase):
     def test_users_publish_item_reference_and_detail(self) -> None:
         with _As("users:read"):
@@ -318,6 +376,9 @@ class ResourcesOpenApiTest(unittest.TestCase):
             "ResourceFormFieldCapability",
             "ItemReference",
             "ResourceDetailCapability",
+            "ActionRequestSpec",
+            "ActionConfirmation",
+            "ActionSuccessBehavior",
             "ResourceRelationCapability",
             "RelationOptionsSource",
             "RelationCardinality",
