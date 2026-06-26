@@ -130,6 +130,15 @@ export function canAddAdditionalRole(draft: BootstrapWizardDraft, catalog: Boots
   return draft.additional_roles.length < catalog.limits.max_additional_roles;
 }
 
+/**
+ * ¿Algún error pertenece a un campo del paso de administrador (``user.*``)? El
+ * wizard usa esto para regresar al paso 1 cuando el backend rechaza un dato del
+ * administrador al enviar desde el paso 2. Los errores de roles no aplican aquí.
+ */
+export function adminStepHasFieldError(fields: WizardFieldErrors): boolean {
+  return Object.keys(fields).some((field) => field.startsWith("user."));
+}
+
 export function parseBootstrapFormError(
   error: ApiRequestError,
 ): { redirectToLogin: boolean; general: string | null; fields: WizardFieldErrors } {

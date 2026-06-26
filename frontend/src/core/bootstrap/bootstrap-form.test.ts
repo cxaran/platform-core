@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import { ApiRequestError } from "../api/api-error.ts";
 import {
+  adminStepHasFieldError,
   buildBootstrapPayload,
   canAddAdditionalRole,
   canRequestBootstrapCatalog,
@@ -117,6 +118,17 @@ test("additional roles respect backend limit", () => {
     assign_to_initial_user: false,
   });
   assert.equal(canAddAdditionalRole(draft, catalog), false);
+});
+
+test("adminStepHasFieldError detects step-1 admin field errors", () => {
+  assert.equal(adminStepHasFieldError({ "user.name": ["x"] }), true);
+  assert.equal(adminStepHasFieldError({ "user.email": ["x"] }), true);
+});
+
+test("adminStepHasFieldError ignores step-2 role field errors", () => {
+  assert.equal(adminStepHasFieldError({ "system_admin_role.label": ["x"] }), false);
+  assert.equal(adminStepHasFieldError({ "additional_roles.name": ["x"] }), false);
+  assert.equal(adminStepHasFieldError({}), false);
 });
 
 test("parseBootstrapFormError redirects completed bootstrap to login", () => {

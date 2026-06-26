@@ -10,7 +10,10 @@ import unittest
 from fastapi import FastAPI, Query
 from fastapi.testclient import TestClient
 
-from backend.app.core.error_handlers import register_exception_handlers
+from backend.app.core.error_handlers import (
+    _spanish_validation_message,
+    register_exception_handlers,
+)
 from backend.app.query.validation import QueryParameterError
 
 
@@ -87,6 +90,46 @@ class RequestValidationErrorContractTest(unittest.TestCase):
 
         field = errors[0]["field"]
         self.assertEqual(field, "limit")
+
+
+class SpanishValidationMessageTest(unittest.TestCase):
+    def test_string_too_short_uses_declared_minimum(self) -> None:
+        message = _spanish_validation_message(
+            {"type": "string_too_short", "ctx": {"min_length": 4}, "msg": "x"}
+        )
+        self.assertEqual(message, "Debe tener al menos 4 caracteres.")
+
+    def test_string_too_long_uses_declared_maximum(self) -> None:
+        message = _spanish_validation_message(
+            {"type": "string_too_long", "ctx": {"max_length": 50}, "msg": "x"}
+        )
+        self.assertEqual(message, "Debe tener como máximo 50 caracteres.")
+
+    def test_missing_field(self) -> None:
+        self.assertEqual(
+            _spanish_validation_message({"type": "missing", "msg": "Field required"}),
+            "Este campo es obligatorio.",
+        )
+
+    def test_domain_value_error_is_preserved(self) -> None:
+        # Mensaje de un validador de dominio (ya en español): se conserva.
+        message = _spanish_validation_message(
+            {"type": "value_error", "msg": "Value error, Las contraseñas no coinciden"}
+        )
+        self.assertEqual(message, "Las contraseñas no coinciden")
+
+    def test_email_value_error_is_localized(self) -> None:
+        message = _spanish_validation_message(
+            {"type": "value_error", "msg": "value is not a valid email address: bad"}
+        )
+        self.assertEqual(message, "Correo electrónico inválido.")
+
+    def test_unknown_type_uses_safe_general_message(self) -> None:
+        message = _spanish_validation_message(
+            {"type": "something_internal", "msg": "internal english detail"}
+        )
+        self.assertEqual(message, "El valor ingresado no es válido.")
+        self.assertNotIn("english", message)
 
 
 if __name__ == "__main__":
