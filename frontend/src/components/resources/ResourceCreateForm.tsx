@@ -71,7 +71,6 @@ export function ResourceCreateForm({
       const formData = new FormData(event.currentTarget);
       await createResource(create, buildCreatePayload(create.fields, formData));
       router.replace(listPath);
-      router.refresh();
     } catch (error) {
       if (error instanceof ApiRequestError) {
         if (error.status === 401) {
@@ -80,7 +79,6 @@ export function ResourceCreateForm({
         }
         if (error.status === 403) {
           router.replace(listPath);
-          router.refresh();
           return;
         }
         const parsed = formErrors(error, allowedFields);
