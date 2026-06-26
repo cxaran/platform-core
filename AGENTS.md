@@ -37,6 +37,9 @@ python -m backend.tests.canonical_suite
 # Frontend canonical suite (inside frontend container or frontend/ workdir).
 npm run check:canonical
 
+# E2E Bootstrap (from frontend/ workdir; creates and destroys isolated Docker stack).
+npm run test:e2e:bootstrap
+
 # Single module / single test
 python -m unittest backend.tests.test_security_catalog
 python -m unittest backend.tests.test_security_catalog.SecurityCatalogTest.test_catalog_permissions_are_unique
@@ -93,6 +96,12 @@ docker compose up --build                                          # prod stack
 ```
 
 Dev Mailpit UI (captured outgoing email): http://localhost:8025.
+
+Bootstrap E2E uses `compose.e2e.yml`, Docker project `platform-core-e2e`, and
+host URL `http://127.0.0.1:31080`. It creates a disposable Postgres database
+named `platform_core_e2e_test`, runs Alembic, drives `/setup` through the browser,
+and tears the stack down with volumes. Do not point E2E at the dev database or use
+`BOOTSTRAP_ADMIN_*` as a shortcut.
 
 Next dev stores build manifests in the named volume `frontend_next`. If a new
 route is present inside the container but still 404s in development, first

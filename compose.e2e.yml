@@ -1,0 +1,110 @@
+name: platform-core-e2e
+
+x-backend-environment: &backend-environment
+  ENVIRONMENT: local
+  SECRET_KEY: e2e-secret-key-change-me
+  TRUSTED_BROWSER_ORIGINS: http://127.0.0.1:31080
+  ACCESS_TOKEN_EXPIRE_MINUTES: "30"
+  EMAIL_TOKEN_EXPIRE_MINUTES: "30"
+  TRYS_BEFORE_LOCK: "5"
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+  SMTP_HOST: mailpit
+  SMTP_PORT: "1025"
+  SMTP_USER: e2e@example.com
+  SMTP_PASSWORD: e2e-password
+  SMTP_FROM_EMAIL: e2e@example.com
+  SMTP_FROM_NAME: Platform Core E2E
+  SMTP_TLS: "false"
+  SMTP_SSL: "false"
+  SMTP_USE_CREDENTIALS: "false"
+  POSTGRES_USER: platform
+  POSTGRES_PASSWORD: platform
+  POSTGRES_SERVER: postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: platform_core_e2e_test
+
+services:
+  redis:
+    image: redis:7-alpine
+    tmpfs:
+      - /data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: platform
+      POSTGRES_PASSWORD: platform
+      POSTGRES_DB: platform_core_e2e_test
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}" ]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  backend:
+    build:
+      context: ./backend
+      target: prod
+    image: platform-core-backend:e2e
+    environment:
+      <<: *backend-environment
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    expose:
+      - "8000"
+
+  migrate:
+    build:
+      context: ./backend
+      target: prod
+    image: platform-core-backend:e2e
+    environment:
+      <<: *backend-environment
+    command: [ "alembic", "-c", "backend/alembic.ini", "upgrade", "head" ]
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      target: prod
+    image: platform-core-frontend:e2e
+    environment:
+      API_PROXY_TARGET: http://backend:8000
+      BACKEND_INTERNAL_URL: http://backend:8000
+    expose:
+      - "3000"
+    depends_on:
+      - backend
+
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "127.0.0.1:31080:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - frontend
+      - backend
+
+  mailpit:
+    image: axllent/mailpit:latest
+    expose:
+      - "1025"

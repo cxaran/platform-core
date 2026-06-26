@@ -135,6 +135,24 @@ base limpia -> /setup -> crear administrador -> /login -> login -> dashboard
 La base debe ser aislada y descartable. No se reutiliza la base local del
 desarrollador y no se versionan credenciales productivas.
 
+Comando versionado:
+
+```powershell
+cd frontend
+npm run test:e2e:bootstrap
+```
+
+Estrategia actual:
+
+- `compose.e2e.yml` usa el proyecto Docker `platform-core-e2e`;
+- Postgres usa la base `platform_core_e2e_test` sobre almacenamiento temporal;
+- Redis tambien es temporal;
+- Alembic corre antes del navegador;
+- nginx expone la aplicacion integrada en `http://127.0.0.1:31080`;
+- `TRUSTED_BROWSER_ORIGINS` incluye ese origen;
+- el flujo usa Bootstrap HTTP, nunca `BOOTSTRAP_ADMIN_*`;
+- el runner ejecuta teardown con `docker compose down -v --remove-orphans`.
+
 ## 2026-06-26 - Suite Canonica Backend
 
 Decision: todo modulo nuevo de pruebas backend debe agregarse a

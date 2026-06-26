@@ -34,6 +34,9 @@ python -m unittest backend.tests.test_security_catalog.SecurityCatalogTest.test_
 # Frontend canonical suite (run inside frontend container or frontend/ workdir)
 npm run check:canonical
 
+# Bootstrap E2E (run from frontend/; isolated Docker stack + Playwright Chromium)
+npm run test:e2e:bootstrap
+
 # Database migrations (Alembic config lives in backend/, points at backend/alembic)
 alembic -c backend/alembic.ini revision --autogenerate -m "message"
 alembic -c backend/alembic.ini upgrade head
