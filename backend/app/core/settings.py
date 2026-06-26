@@ -1,10 +1,13 @@
 
 from pydantic_settings import BaseSettings
-from pydantic import SecretStr, computed_field, PostgresDsn
+from pydantic import SecretStr, computed_field, model_validator, PostgresDsn
 from pydantic_core import MultiHostUrl
 from fastapi_mail import ConnectionConfig
 from typing import Literal
 from functools import lru_cache
+from typing_extensions import Self
+
+from backend.app.core.csrf import normalize_browser_origin
 
 class Settings(BaseSettings):
     project_name: str = "FastAPI"
@@ -15,6 +18,34 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int
     email_token_expire_minutes: int
     trys_before_lock: int
+
+    # Allowlist explícita de orígenes de navegador confiables (CSV) para mutaciones
+    # autenticadas por cookie. Dev: localhost. Producción: debe definirse por env.
+    trusted_browser_origins: str = "http://localhost:3000"
+
+    @computed_field
+    @property
+    def trusted_origins(self) -> frozenset[str]:
+        normalized: set[str] = set()
+        for raw in self.trusted_browser_origins.split(","):
+            origin = normalize_browser_origin(raw.strip())
+            if origin is not None:
+                normalized.add(origin)
+        return frozenset(normalized)
+
+    @model_validator(mode="after")
+    def _require_trusted_origins_in_production(self) -> Self:
+        if self.environment == "production":
+            origins = self.trusted_origins
+            if not origins:
+                raise ValueError(
+                    "trusted_browser_origins debe definirse con orígenes HTTPS válidos en producción."
+                )
+            if any(not origin.startswith("https://") for origin in origins):
+                raise ValueError(
+                    "trusted_browser_origins debe contener únicamente orígenes HTTPS en producción."
+                )
+        return self
 
     redis_host: str
     redis_port: int
@@ -55,7 +86,7 @@ class Settings(BaseSettings):
     @computed_field
     @property
     def mail_config(self) -> ConnectionConfig:
-        
+
         return ConnectionConfig(
             MAIL_USERNAME=self.smtp_user,
             MAIL_PASSWORD=self.smtp_password,

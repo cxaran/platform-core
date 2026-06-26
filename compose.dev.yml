@@ -3,6 +3,7 @@ name: platform-core-dev
 x-backend-environment: &backend-environment
   ENVIRONMENT: local
   SECRET_KEY: dev-secret-key-change-me
+  TRUSTED_BROWSER_ORIGINS: http://localhost:3000
   ACCESS_TOKEN_EXPIRE_MINUTES: "30"
   EMAIL_TOKEN_EXPIRE_MINUTES: "30"
   TRYS_BEFORE_LOCK: "5"

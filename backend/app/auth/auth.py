@@ -3,6 +3,7 @@ from pydantic import EmailStr, SecretStr
 
 
 from backend.app.core.database import SessionDep
+from backend.app.core.settings import settings
 from backend.app.utils.utc_now import utc_now
 
 from .account_lock import increment_failed_login_attempts, clear_failed_login_attempts
@@ -46,6 +47,7 @@ def set_session_cookie(
         httponly=True,
         max_age=int(get_access_token_ttl().total_seconds()),
         samesite="lax",
+        secure=settings.environment == "production",
         path="/",
     )
 

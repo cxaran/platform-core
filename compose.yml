@@ -17,6 +17,8 @@ services:
       context: ./backend
       target: prod
     image: platform-core-backend:prod
+    # El archivo de entorno debe definir TRUSTED_BROWSER_ORIGINS con los orígenes
+    # HTTPS públicos confiables; en producción la app falla al iniciar si está vacío.
     env_file: ${APP_ENV_FILE:-.env}
     expose:
       - "8000"
