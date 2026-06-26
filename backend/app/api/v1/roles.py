@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, Query, status
 
 from backend.app.api.resource_actions import (
+    commit_with_admin_survival,
     create_entity,
     deactivate_entity,
     ensure_allowed_values,
@@ -32,6 +33,7 @@ from backend.app.schemas.role import (
 )
 from backend.app.security.catalog import declared_permissions
 from backend.app.security.groups.roles import RolePermissions
+from backend.app.security.session_invalidation import invalidate_role_members_sessions
 
 router = APIRouter(prefix="/roles", tags=["roles"])
 
@@ -112,7 +114,14 @@ def update_role(
         role,
         payload,
         actor_id=current_user.id,
+        commit=False,
         conflict_message="Ya existe un rol con ese nombre",
+    )
+    # Desactivar un rol cambia la cobertura de sus miembros: se invalidan sus sesiones.
+    if payload.is_active is False:
+        invalidate_role_members_sessions(session, role_id, actor_id=current_user.id)
+    commit_with_admin_survival(
+        session, conflict_message="Ya existe un rol con ese nombre"
     )
     return serialize(RoleRead, role)
 
@@ -129,7 +138,14 @@ def delete_role(
         session,
         role,
         actor_id=current_user.id,
+        commit=False,
         inactive_message="El rol ya está desactivado",
+    )
+    invalidate_role_members_sessions(session, role_id, actor_id=current_user.id)
+    commit_with_admin_survival(
+        session,
+        conflict_message="El rol ya está desactivado",
+        conflict_code="resource_state_conflict",
     )
     return serialize(RoleRead, role)
 
@@ -153,7 +169,15 @@ def replace_role_permissions(
         allowed_values=DECLARED_PERMISSIONS,
         actor_id=current_user.id,
         touch=role,
+        commit=False,
         invalid_message="El rol contiene permisos no declarados",
         invalid_code="invalid_permission",
+    )
+    # Cambiar los permisos del rol altera la cobertura de todos sus miembros activos.
+    invalidate_role_members_sessions(session, role_id, actor_id=current_user.id)
+    commit_with_admin_survival(
+        session,
+        conflict_message="Conflicto al reemplazar valores relacionados",
+        conflict_code="relation_conflict",
     )
     return serialize_with(RoleDetailRead, role, {"permissions": permissions})

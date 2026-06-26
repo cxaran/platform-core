@@ -18,6 +18,7 @@ from backend.app.query import OffsetQuerySchema, ResourceQuery
 from backend.app.schemas.base import ApiPatchSchema, ApiReadSchema, ApiWriteSchema
 from backend.app.schemas.error import ErrorItem, ErrorResponse
 from backend.app.schemas.pagination import OffsetPage
+from backend.app.security.admin_survival import AdminCoverageError, assert_admin_survival
 from backend.app.utils.utc_now import utc_now
 
 TModel = TypeVar("TModel")
@@ -140,6 +141,7 @@ def patch_entity(
     rotate_token_fields: tuple[str, ...] = (),
     token_factory: Callable[[], str] | None = None,
     token_field: str = "token",
+    commit: bool = True,
     conflict_message: str,
     conflict_code: str = "resource_conflict",
 ) -> TModel:
@@ -155,8 +157,7 @@ def patch_entity(
     if should_rotate_token and token_factory is not None:
         setattr(entity, token_field, token_factory())
     touch_entity(entity, actor_id)
-    commit_or_conflict(session, conflict_message, code=conflict_code)
-    session.refresh(entity)
+    _persist(session, entity, commit=commit, conflict_message=conflict_message, conflict_code=conflict_code)
     return entity
 
 
@@ -166,13 +167,13 @@ def update_entity_values(
     values: dict[str, Any],
     *,
     actor_id: Any | None = None,
+    commit: bool = True,
     conflict_message: str,
     conflict_code: str = "resource_conflict",
 ) -> TModel:
     assign_values(entity, values)
     touch_entity(entity, actor_id)
-    commit_or_conflict(session, conflict_message, code=conflict_code)
-    session.refresh(entity)
+    _persist(session, entity, commit=commit, conflict_message=conflict_message, conflict_code=conflict_code)
     return entity
 
 
@@ -184,6 +185,7 @@ def deactivate_entity(
     active_field: str = "is_active",
     token_factory: Callable[[], str] | None = None,
     token_field: str = "token",
+    commit: bool = True,
     inactive_message: str,
     inactive_code: str = "resource_state_conflict",
 ) -> TModel:
@@ -193,8 +195,7 @@ def deactivate_entity(
     if token_factory is not None:
         setattr(entity, token_field, token_factory())
     touch_entity(entity, actor_id)
-    session.commit()
-    session.refresh(entity)
+    _persist(session, entity, commit=commit, conflict_message=inactive_message, conflict_code=inactive_code)
     return entity
 
 
@@ -209,6 +210,7 @@ def replace_to_many(
     target_ids: list[Any],
     actor_id: Any | None = None,
     touch: Any | None = None,
+    commit: bool = True,
     missing_message: str,
     missing_code: str = "resource_not_found",
     conflict_message: str = "Conflicto al reemplazar la relación",
@@ -225,6 +227,10 @@ def replace_to_many(
     ).all()
     for row in existing:
         session.delete(row)
+    # Forzar el DELETE antes de los INSERT: si el conjunto nuevo solapa con el
+    # anterior, reinsertar la misma clave única en el mismo flush violaría la
+    # restricción (SQLAlchemy no garantiza orden delete→insert por sí solo).
+    session.flush()
 
     for target_id in ids:
         values = {
@@ -237,7 +243,8 @@ def replace_to_many(
 
     if touch is not None:
         touch_entity(touch, actor_id)
-    commit_or_conflict(session, conflict_message, code=conflict_code)
+    if commit:
+        commit_or_conflict(session, conflict_message, code=conflict_code)
     return targets
 
 
@@ -252,6 +259,7 @@ def replace_child_values(
     allowed_values: set[Any] | None = None,
     actor_id: Any | None = None,
     touch: Any | None = None,
+    commit: bool = True,
     invalid_message: str,
     invalid_code: str = "invalid_relation_value",
     conflict_message: str = "Conflicto al reemplazar valores relacionados",
@@ -272,6 +280,9 @@ def replace_child_values(
     ).all()
     for row in existing:
         session.delete(row)
+    # Ver nota en ``replace_to_many``: garantizar DELETE antes de INSERT evita
+    # violar la unicidad cuando el conjunto nuevo solapa con el anterior.
+    session.flush()
 
     for value in items:
         row_values = {
@@ -284,7 +295,8 @@ def replace_child_values(
 
     if touch is not None:
         touch_entity(touch, actor_id)
-    commit_or_conflict(session, conflict_message, code=conflict_code)
+    if commit:
+        commit_or_conflict(session, conflict_message, code=conflict_code)
     return items
 
 
@@ -349,6 +361,49 @@ def commit_or_conflict(
     except IntegrityError:
         session.rollback()
         api_error(status.HTTP_409_CONFLICT, code, message)
+
+
+def _persist(
+    session: Session,
+    entity: Any,
+    *,
+    commit: bool,
+    conflict_message: str,
+    conflict_code: str,
+) -> None:
+    """Confirma y refresca, o solo deja el cambio staged para un commit posterior.
+
+    ``commit=False`` difiere el ``commit`` para que una mutación sensible pueda
+    validar supervivencia administrativa dentro de la misma transacción antes de
+    confirmar (ver :func:`commit_with_admin_survival`)."""
+    if commit:
+        commit_or_conflict(session, conflict_message, code=conflict_code)
+        session.refresh(entity)
+
+
+def commit_with_admin_survival(
+    session: Session,
+    *,
+    conflict_message: str,
+    conflict_code: str = "resource_conflict",
+) -> None:
+    """Valida supervivencia administrativa y confirma en una sola transacción.
+
+    Aplica el ``flush`` de los cambios staged para que la verificación observe el
+    estado resultante; si rompe la invariante, revierte y responde el error estable
+    ``admin_coverage_required`` (sin revelar el elemento crítico). Cualquier
+    conflicto de integridad se traduce al envelope estándar de conflicto."""
+    try:
+        session.flush()
+    except IntegrityError:
+        session.rollback()
+        api_error(status.HTTP_409_CONFLICT, conflict_code, conflict_message)
+    try:
+        assert_admin_survival(session)
+    except AdminCoverageError as exc:
+        session.rollback()
+        api_error(status.HTTP_409_CONFLICT, exc.code, exc.message)
+    commit_or_conflict(session, conflict_message, code=conflict_code)
 
 
 def dedupe(values: list[Any]) -> list[Any]:
