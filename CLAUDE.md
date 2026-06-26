@@ -6,8 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Monorepo with a Docker Compose stack: `nginx` (reverse proxy) → `frontend` + `backend`, plus `redis` and `postgres`.
 
-- `backend/` — FastAPI application. **This is the only implemented part.**
-- `frontend/` — empty placeholder; Compose builds it as a Next.js-style dev/prod image but no source exists yet.
+- `backend/` — FastAPI application.
+- `frontend/` — Next.js application.
 - `nginx/nginx.conf` — routes `/api/` to backend:8000 and everything else to frontend:3000.
 - `compose.yml` (prod) / `compose.dev.yml` (dev) — both read env from `${APP_ENV_FILE:-.env}`; dev also injects inline env vars and runs Postgres + Mailpit.
 
@@ -26,10 +26,13 @@ Run everything from the repo root. Python deps live in `backend/venv` (activate 
 # Run the API locally (needs Postgres + Redis reachable and env vars set)
 uvicorn backend.app.main:app --reload
 
-# Tests (stdlib unittest; tests/ has no __init__.py, so run modules by name, not `discover`)
-python -m unittest backend.tests.test_query backend.tests.test_query_helpers backend.tests.test_query_integration backend.tests.test_query_policy backend.tests.test_query_plan backend.tests.test_query_contract backend.tests.test_query_sort_roles backend.tests.test_query_strategies backend.tests.test_error_contract backend.tests.test_query_postgres backend.tests.test_security_catalog backend.tests.test_auth_routes
+# Backend canonical suite (stdlib unittest; tests/ has no __init__.py, so do not use `discover`)
+python -m backend.tests.canonical_suite
 python -m unittest backend.tests.test_security_catalog          # single module
 python -m unittest backend.tests.test_security_catalog.SecurityCatalogTest.test_catalog_permissions_are_unique  # single test
+
+# Frontend canonical suite (run inside frontend container or frontend/ workdir)
+npm run check:canonical
 
 # Database migrations (Alembic config lives in backend/, points at backend/alembic)
 alembic -c backend/alembic.ini revision --autogenerate -m "message"
@@ -54,7 +57,7 @@ Mailpit dev UI (captured outgoing email): http://localhost:8025.
 - Models in `app/models/user.py` use **SQLAlchemy 2.0** `DeclarativeBase` (`app/models/base.py`) with `Mapped[...]` / `mapped_column`. Alembic autogenerate targets `Base.metadata`.
 - But `app/core/database.py` hands out **`sqlmodel.Session`** (`SessionDep`). So the ORM models are plain SQLAlchemy while the session type comes from SQLModel — keep new models on the SQLAlchemy `Base`, not `SQLModel`.
 - Core tables: `User`, `Role`, `UserRole` (M2M), `RoleAccess` (permission strings attached to a role). UUID PKs, soft-delete via `is_active`, audit columns (`created_at`/`updated_at`/`updated_by`).
-- `alembic/versions/` is currently empty — no migrations have been generated yet.
+- Alembic migrations live in `backend/alembic/versions/`.
 
 ### Authentication (`app/auth/`)
 - Password hashing: argon2 via passlib (`app/auth/security.py`). `verify_dummy_password` equalizes timing when a user doesn't exist.

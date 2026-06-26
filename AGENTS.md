@@ -9,10 +9,8 @@ for routing/RBAC/errors/migrations, and `platform-query-schemas`
 
 ## What is implemented
 
-Only the FastAPI `backend/` is real. `frontend/` is an empty placeholder
-(Compose builds a Next.js-style image but no source exists), and
-`nginx/nginx.conf` just proxies `/api/` → backend and `/` → frontend. Do not
-attempt to run or edit the frontend.
+FastAPI `backend/` and the Next.js `frontend/` are implemented. `nginx/nginx.conf`
+proxies `/api/` → backend and `/` → frontend.
 
 ## Run everything from the repo root, never from `backend/`
 
@@ -33,13 +31,11 @@ uvicorn backend.app.main:app --reload
 List the modules explicitly. Run from repo root.
 
 ```powershell
-# Full suite
-python -m unittest backend.tests.test_query backend.tests.test_query_helpers `
-  backend.tests.test_query_integration backend.tests.test_query_policy `
-  backend.tests.test_query_plan backend.tests.test_query_contract `
-  backend.tests.test_query_sort_roles backend.tests.test_query_strategies `
-  backend.tests.test_error_contract backend.tests.test_query_postgres `
-  backend.tests.test_security_catalog backend.tests.test_auth_routes
+# Backend canonical suite: prints total/passed/skipped/failed.
+python -m backend.tests.canonical_suite
+
+# Frontend canonical suite (inside frontend container or frontend/ workdir).
+npm run check:canonical
 
 # Single module / single test
 python -m unittest backend.tests.test_security_catalog
@@ -48,6 +44,22 @@ python -m unittest backend.tests.test_security_catalog.SecurityCatalogTest.test_
 
 Note: `test_query_postgres` needs a live Postgres (per CLAUDE.md). Other suites
 are unit-style and do not require services.
+
+Canonical reports should use:
+
+```text
+Backend canonical suite:
+  total:
+  passed:
+  skipped:
+  failed:
+
+Frontend canonical suite:
+  check:api:
+  lint:
+  typecheck:
+  build:
+```
 
 ## Type checking
 
@@ -64,8 +76,8 @@ secrets). The app **fails to import** without a complete env. Tests and
 
 ## Migrations
 
-`alembic.ini` lives in `backend/`; it points at `backend/alembic`. **No
-migrations exist yet** (`alembic/versions/` is absent). Run from repo root:
+`alembic.ini` lives in `backend/`; it points at `backend/alembic`. Run from repo
+root:
 
 ```powershell
 alembic -c backend/alembic.ini revision --autogenerate -m "message"
@@ -82,6 +94,11 @@ docker compose up --build                                          # prod stack
 
 Dev Mailpit UI (captured outgoing email): http://localhost:8025.
 
+Next dev stores build manifests in the named volume `frontend_next`. If a new
+route is present inside the container but still 404s in development, first
+rebuild/restart frontend; if it persists, recreate only `frontend_next`. Do not
+delete `node_modules`, Postgres, Redis, or global volumes for this symptom.
+
 ## Architecture gotchas (verify against CLAUDE.md before changing)
 
 - **SQLAlchemy models + SQLModel session.** Models use SQLAlchemy 2.0
@@ -91,6 +108,16 @@ Dev Mailpit UI (captured outgoing email): http://localhost:8025.
 - **JWT `jti` is a token version, not a token id.** It holds `User.token`. Any
   password/email change or forced logout rotates `User.token`, invalidating all
   existing JWTs (enforced in `get_current_user`).
+- **Initial-data seed is not product setup.** `BOOTSTRAP_ADMIN_*` settings and
+  `backend.app.core.bootstrap` are an operational seed tool for development,
+  tests, or explicit recovery. Do not run it automatically at container startup
+  and do not expose it as HTTP setup. A future product setup flow must use a
+  distinct `BOOTSTRAP_SETUP_TOKEN`, persistent setup state, concurrency control,
+  and administrator protection.
+- **Password reset is backend-ahead.** Routes exist and should keep generic
+  responses, token rotation, unlock, expiry, and one-time token use. Do not add
+  public UI or mark it release-ready until rate limiting by IP/origin and by
+  normalized identity, safe logging, and mail delivery configuration are covered.
 - **Permissions are declared in code**, stored as plain strings, enforced as
   FastAPI dependencies (`SecurityControl`/`SecurityGroup` in
   `app/security/`). Adding a permission → update the group enum, ensure it is
