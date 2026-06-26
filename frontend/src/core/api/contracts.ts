@@ -22,3 +22,9 @@ export type FilterOperator = components["schemas"]["FilterOperator"];
 // Respuesta del catálogo derivada de la operación real (no se reescribe el array a mano).
 export type ResourceCatalog =
   operations["list_resources_api_v1_resources_get"]["responses"][200]["content"]["application/json"];
+
+export type BootstrapStatusRead = components["schemas"]["BootstrapStatusRead"];
+export type BootstrapCatalogRead = components["schemas"]["BootstrapCatalogRead"];
+export type BootstrapInitializeRequest = components["schemas"]["BootstrapInitializeRequest"];
+export type BootstrapInitializeRead = components["schemas"]["BootstrapInitializeRead"];
+export type BootstrapPermissionGroupRead = components["schemas"]["BootstrapPermissionGroupRead"];

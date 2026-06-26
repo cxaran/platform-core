@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 
 import { LoginForm } from "@/features/auth/LoginForm";
 import { getSession } from "@/core/auth/session";
+import { getBootstrapStatus } from "@/core/bootstrap/bootstrap-server";
 
 export const dynamic = "force-dynamic";
 
@@ -9,6 +10,11 @@ export default async function LoginPage() {
   const session = await getSession();
   if (session) {
     redirect("/");
+  }
+
+  const status = await getBootstrapStatus();
+  if (status.setup_required) {
+    redirect("/setup");
   }
 
   return (
