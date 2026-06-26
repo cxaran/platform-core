@@ -42,14 +42,37 @@ class WidgetType(str, Enum):
     TEXTAREA = "textarea"
     MULTISELECT = "multiselect"
     SELECT = "select"
+    # Controles de fecha de calendario (filtros de fecha de C1). El frontend envía un
+    # literal ``YYYY-MM-DD`` (nunca ``new Date()``/``toISOString()``).
+    DATE = "date"
+    DATERANGE = "daterange"
 
 
 class FilterOperator(str, Enum):
     EQ = "eq"
+    NE = "ne"
+    CONTAINS = "contains"
+    STARTS_WITH = "starts_with"
+    ENDS_WITH = "ends_with"
     GTE = "gte"
     LTE = "lte"
+    ON = "on"
+    BEFORE = "before"
+    AFTER = "after"
+    BETWEEN = "between"
     IN = "in"
     ISNULL = "isnull"
+
+
+class FilterValueShape(str, Enum):
+    # Un solo valor (texto, fecha, opción).
+    SINGLE = "single"
+    # Rango con dos extremos declarados en ``parameters`` (p. ej. ``between``).
+    RANGE = "range"
+    # Múltiples valores (p. ej. ``in``).
+    MULTIPLE = "multiple"
+    # Sin valor (p. ej. ``isnull``): el operador es la condición.
+    NONE = "none"
 
 
 class HttpMethod(str, Enum):
@@ -110,6 +133,51 @@ class ResourceFilterCapability(ApiReadSchema):
     options: Optional[list[ResourceFilterOption]] = None
 
 
+class FilterableRangeParameters(ApiReadSchema):
+    """Nombres de parámetro de los dos extremos de un operador de rango (``between``)."""
+
+    # ``from`` es palabra reservada en Python: se publica con alias.
+    from_: str = Field(alias="from")
+    to: str
+
+
+class FilterableOperatorCapability(ApiReadSchema):
+    """Un operador concreto que un campo expone como filtro visible.
+
+    ``parameter_name`` (operadores de un solo parámetro) y ``parameters`` (rango) son
+    mutuamente excluyentes. ``value_shape`` indica cómo capturar el valor; ``widget``,
+    cómo renderizarlo. Los flags opcionales describen la semántica que el frontend debe
+    respetar pero no inferir (case-sensitivity, zona horaria de calendario, inclusión
+    del extremo superior del rango, multiplicidad)."""
+
+    key: FilterOperator
+    label: str
+    value_shape: FilterValueShape
+    widget: WidgetType
+    parameter_name: Optional[str] = None
+    parameters: Optional[FilterableRangeParameters] = None
+    case_sensitive: Optional[bool] = None
+    calendar_timezone: Optional[str] = None
+    range_end_inclusive: Optional[bool] = None
+    multiple: Optional[bool] = None
+    options: Optional[list[ResourceFilterOption]] = None
+    max_values: Optional[int] = None
+    placeholder: Optional[str] = None
+
+
+class FilterableFieldCapability(ApiReadSchema):
+    """Campo filtrable y los operadores que expone (contrato visible de filtros).
+
+    Fuente declarativa única: los operadores se derivan del plan compilado del recurso
+    (``QueryOptions``/``field_operators``); el frontend no infiere parámetros ni sufijos."""
+
+    key: str
+    label: str
+    description: Optional[str] = None
+    value_type: FieldValueType
+    operators: list[FilterableOperatorCapability]
+
+
 class PaginationCapability(ApiReadSchema):
     default_limit: int
     max_limit: int
@@ -130,7 +198,12 @@ class SortCapability(ApiReadSchema):
 
 class ResourceListCapability(ApiReadSchema):
     fields: list[ResourceFieldCapability]
+    # Filtros visibles heredados (un control por campo). Se conserva por compatibilidad;
+    # el contrato completo y declarativo de filtros vive en ``filterable_fields``.
     filters: list[ResourceFilterCapability] = []
+    # Contrato aditivo de filtros declarativos (C1): por campo, los operadores que
+    # expone con su forma de valor, widget y parámetros.
+    filterable_fields: list[FilterableFieldCapability] = []
     pagination: PaginationCapability
     search: SearchCapability
     sort: SortCapability

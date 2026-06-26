@@ -31,7 +31,11 @@ from backend.app.schemas.capabilities import (
     ActionRequestSpec,
     ActionSuccessBehavior,
     FieldValueType,
+    FilterableFieldCapability,
+    FilterableOperatorCapability,
+    FilterableRangeParameters,
     FilterOperator,
+    FilterValueShape,
     HttpMethod,
     ItemReference,
     PaginationCapability,
@@ -296,6 +300,206 @@ def _filter_capabilities(
     return filters
 
 
+# --- Filtros declarativos visibles (filterable_fields, C1) ---
+
+# Orden de presentación de los operadores filtrables visibles de un campo. ``in``,
+# ``isnull``, ``gte`` y ``lte`` no se publican como filtros visibles en este alcance.
+_FILTERABLE_OPERATOR_ORDER = (
+    Operator.CONTAINS,
+    Operator.STARTS_WITH,
+    Operator.ENDS_WITH,
+    Operator.EQ,
+    Operator.NE,
+    Operator.ON,
+    Operator.BEFORE,
+    Operator.AFTER,
+    Operator.BETWEEN,
+)
+
+_TEXT_MATCH_LABELS = {
+    Operator.CONTAINS: "Contiene",
+    Operator.STARTS_WITH: "Empieza por",
+    Operator.ENDS_WITH: "Termina en",
+}
+_CALENDAR_LABELS = {
+    Operator.ON: "En la fecha",
+    Operator.BEFORE: "Antes de",
+    Operator.AFTER: "Después de",
+}
+
+
+def _default_eq_widget(value_type: FieldValueType) -> WidgetType:
+    if value_type is FieldValueType.BOOLEAN:
+        return WidgetType.SWITCH
+    return WidgetType.TEXT
+
+
+def _eq_filter_declaration(
+    field_name: str, field_info: FieldInfo
+) -> tuple[Optional[list[ResourceFilterOption]], Optional[WidgetType]]:
+    """Opciones/widget declarados para el ``eq`` de un campo vía ``ui.filter`` (select).
+
+    Reusa la única declaración existente (p. ej. ``is_active`` con Activos/Inactivos);
+    si no hay declaración select, ``eq`` toma el widget por defecto del tipo."""
+    declaration = _ui(field_info).get("filter")
+    if not isinstance(declaration, dict) or declaration.get("operator") != "eq":
+        return None, None
+    try:
+        widget = WidgetType(declaration.get("widget"))
+    except ValueError:
+        return None, None
+    if widget is not WidgetType.SELECT:
+        return None, None
+    return _filter_options(field_name, widget, declaration.get("options")), widget
+
+
+def _filterable_operator(
+    operator: Operator,
+    *,
+    value_type: FieldValueType,
+    parameter: Optional[str],
+    range_params: Optional[tuple[str, str]],
+    eq_options: Optional[list[ResourceFilterOption]],
+    eq_widget: Optional[WidgetType],
+    calendar_tz: str,
+) -> FilterableOperatorCapability:
+    key = FilterOperator(operator.value)
+    if operator in _TEXT_MATCH_LABELS:
+        return FilterableOperatorCapability(
+            key=key,
+            label=_TEXT_MATCH_LABELS[operator],
+            value_shape=FilterValueShape.SINGLE,
+            widget=WidgetType.TEXT,
+            parameter_name=parameter,
+            case_sensitive=False,
+        )
+    if operator is Operator.EQ:
+        return FilterableOperatorCapability(
+            key=key,
+            label="Es igual a",
+            value_shape=FilterValueShape.SINGLE,
+            widget=eq_widget or _default_eq_widget(value_type),
+            parameter_name=parameter,
+            options=eq_options,
+            case_sensitive=True if value_type in (FieldValueType.STRING, FieldValueType.EMAIL) else None,
+        )
+    if operator is Operator.NE:
+        return FilterableOperatorCapability(
+            key=key,
+            label="No es igual a",
+            value_shape=FilterValueShape.SINGLE,
+            widget=WidgetType.TEXT,
+            parameter_name=parameter,
+            case_sensitive=True,
+        )
+    if operator in _CALENDAR_LABELS:
+        return FilterableOperatorCapability(
+            key=key,
+            label=_CALENDAR_LABELS[operator],
+            value_shape=FilterValueShape.SINGLE,
+            widget=WidgetType.DATE,
+            parameter_name=parameter,
+            calendar_timezone=calendar_tz,
+        )
+    # between: dos parámetros, extremo superior inclusivo para el usuario.
+    assert range_params is not None
+    return FilterableOperatorCapability(
+        key=key,
+        label="Entre",
+        value_shape=FilterValueShape.RANGE,
+        widget=WidgetType.DATERANGE,
+        parameters=FilterableRangeParameters.model_validate(
+            {"from": range_params[0], "to": range_params[1]}
+        ),
+        calendar_timezone=calendar_tz,
+        range_end_inclusive=True,
+    )
+
+
+def _filterable_fields(
+    plan: CompiledQueryPlan,
+    list_schema: type[BaseModel],
+    field_caps: dict[str, ResourceFieldCapability],
+) -> list[FilterableFieldCapability]:
+    """Proyecta el contrato de filtros declarativos desde el plan compilado.
+
+    Fuente única: ``eq`` viene de ``filter_parameters``; los operadores extendidos de
+    C1 vienen de ``extended_filters``. Solo se publican campos emitidos en
+    ``list.fields`` (con label/tipo); ``id`` y demás internos quedan fuera."""
+    eq_params = {
+        parameter.field_name: parameter.parameter_name
+        for parameter in plan.filter_parameters
+        if parameter.operator is Operator.EQ
+    }
+    ext_single = {
+        (descriptor.field_name, descriptor.operator): descriptor.parameter_name
+        for descriptor in plan.extended_filters
+        if descriptor.parameter_name is not None
+    }
+    ext_range = {
+        descriptor.field_name: (descriptor.from_parameter, descriptor.to_parameter)
+        for descriptor in plan.extended_filters
+        if descriptor.operator is Operator.BETWEEN
+    }
+    calendar_tz = plan.calendar_timezone
+
+    result: list[FilterableFieldCapability] = []
+    for name, field_cap in field_caps.items():
+        field_info = list_schema.model_fields[name]
+        eq_options, eq_widget = _eq_filter_declaration(name, field_info)
+        operators: list[FilterableOperatorCapability] = []
+
+        for operator in _FILTERABLE_OPERATOR_ORDER:
+            if operator is Operator.BETWEEN:
+                range_params = ext_range.get(name)
+                if range_params is None or range_params[0] is None or range_params[1] is None:
+                    continue
+                operators.append(
+                    _filterable_operator(
+                        operator,
+                        value_type=field_cap.type,
+                        parameter=None,
+                        range_params=(range_params[0], range_params[1]),
+                        eq_options=None,
+                        eq_widget=None,
+                        calendar_tz=calendar_tz,
+                    )
+                )
+                continue
+
+            if operator is Operator.EQ:
+                parameter = eq_params.get(name)
+            else:
+                parameter = ext_single.get((name, operator))
+            if parameter is None:
+                continue
+
+            operators.append(
+                _filterable_operator(
+                    operator,
+                    value_type=field_cap.type,
+                    parameter=parameter,
+                    range_params=None,
+                    eq_options=eq_options,
+                    eq_widget=eq_widget,
+                    calendar_tz=calendar_tz,
+                )
+            )
+
+        if not operators:
+            continue
+        result.append(
+            FilterableFieldCapability(
+                key=name,
+                label=field_cap.label,
+                description=field_cap.description,
+                value_type=field_cap.type,
+                operators=operators,
+            )
+        )
+    return result
+
+
 def _list_capability(definition: ResourceDefinition) -> ResourceListCapability:
     assert definition.list_query is not None and definition.list_schema is not None
     plan = definition.list_query.plan
@@ -327,6 +531,7 @@ def _list_capability(definition: ResourceDefinition) -> ResourceListCapability:
         field_caps[name] = cap
 
     filters = _filter_capabilities(plan, query_schema, list_schema, field_caps)
+    filterable_fields = _filterable_fields(plan, list_schema, field_caps)
 
     limit_field = query_schema.model_fields["limit"]
     pagination = PaginationCapability(
@@ -346,7 +551,12 @@ def _list_capability(definition: ResourceDefinition) -> ResourceListCapability:
 
     sort = _sort_capability(plan, _constraint(query_schema.model_fields["sort"], "max_length"))
     return ResourceListCapability(
-        fields=fields, filters=filters, pagination=pagination, search=search, sort=sort
+        fields=fields,
+        filters=filters,
+        filterable_fields=filterable_fields,
+        pagination=pagination,
+        search=search,
+        sort=sort,
     )
 
 

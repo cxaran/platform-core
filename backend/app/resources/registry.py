@@ -15,6 +15,24 @@ from pydantic import BaseModel
 
 from backend.app.models.user import Role, User
 from backend.app.query import QueryOptions, ResourceQuery
+from backend.app.query.operators import Operator
+
+# Operadores de texto visibles compartidos por los campos de nombre/correo de los
+# recursos administrativos (``eq`` se declara aparte vía ``filter_fields``).
+_TEXT_FILTER_OPERATORS = (
+    Operator.CONTAINS,
+    Operator.STARTS_WITH,
+    Operator.ENDS_WITH,
+    Operator.NE,
+)
+# Operadores de fecha de calendario para ``created_at`` (día completo en la zona de
+# aplicación). Solo se publican en usuarios y roles, no en permisos.
+_CREATED_AT_OPERATORS = (
+    Operator.ON,
+    Operator.BEFORE,
+    Operator.AFTER,
+    Operator.BETWEEN,
+)
 from backend.app.schemas.capabilities import (
     ActionScope,
     HttpMethod,
@@ -40,10 +58,15 @@ USERS = ResourceQuery(
     model=User,
     schema=UserAdminListItem,
     options=QueryOptions(
-        filter_fields=("is_active", "email"),
+        filter_fields=("is_active", "email", "name"),
         sort_fields=("created_at", "name", "email"),
         search_fields=("name", "email"),
         in_fields=("id",),
+        field_operators={
+            "name": _TEXT_FILTER_OPERATORS,
+            "email": _TEXT_FILTER_OPERATORS,
+            "created_at": _CREATED_AT_OPERATORS,
+        },
         default_sort="-created_at",
     ),
 )
@@ -70,6 +93,10 @@ ROLES = ResourceQuery(
         sort_fields=("created_at", "name"),
         search_fields=("name",),
         in_fields=("id",),
+        field_operators={
+            "name": _TEXT_FILTER_OPERATORS,
+            "created_at": _CREATED_AT_OPERATORS,
+        },
         default_sort="name",
     ),
 )

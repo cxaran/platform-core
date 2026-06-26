@@ -623,7 +623,74 @@ export interface components {
          * FilterOperator
          * @enum {string}
          */
-        FilterOperator: "eq" | "gte" | "lte" | "in" | "isnull";
+        FilterOperator: "eq" | "ne" | "contains" | "starts_with" | "ends_with" | "gte" | "lte" | "on" | "before" | "after" | "between" | "in" | "isnull";
+        /**
+         * FilterValueShape
+         * @enum {string}
+         */
+        FilterValueShape: "single" | "range" | "multiple" | "none";
+        /**
+         * FilterableFieldCapability
+         * @description Campo filtrable y los operadores que expone (contrato visible de filtros).
+         *
+         *     Fuente declarativa única: los operadores se derivan del plan compilado del recurso
+         *     (``QueryOptions``/``field_operators``); el frontend no infiere parámetros ni sufijos.
+         */
+        FilterableFieldCapability: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Description */
+            description?: string | null;
+            value_type: components["schemas"]["FieldValueType"];
+            /** Operators */
+            operators: components["schemas"]["FilterableOperatorCapability"][];
+        };
+        /**
+         * FilterableOperatorCapability
+         * @description Un operador concreto que un campo expone como filtro visible.
+         *
+         *     ``parameter_name`` (operadores de un solo parámetro) y ``parameters`` (rango) son
+         *     mutuamente excluyentes. ``value_shape`` indica cómo capturar el valor; ``widget``,
+         *     cómo renderizarlo. Los flags opcionales describen la semántica que el frontend debe
+         *     respetar pero no inferir (case-sensitivity, zona horaria de calendario, inclusión
+         *     del extremo superior del rango, multiplicidad).
+         */
+        FilterableOperatorCapability: {
+            key: components["schemas"]["FilterOperator"];
+            /** Label */
+            label: string;
+            value_shape: components["schemas"]["FilterValueShape"];
+            widget: components["schemas"]["WidgetType"];
+            /** Parameter Name */
+            parameter_name?: string | null;
+            parameters?: components["schemas"]["FilterableRangeParameters"] | null;
+            /** Case Sensitive */
+            case_sensitive?: boolean | null;
+            /** Calendar Timezone */
+            calendar_timezone?: string | null;
+            /** Range End Inclusive */
+            range_end_inclusive?: boolean | null;
+            /** Multiple */
+            multiple?: boolean | null;
+            /** Options */
+            options?: components["schemas"]["ResourceFilterOption"][] | null;
+            /** Max Values */
+            max_values?: number | null;
+            /** Placeholder */
+            placeholder?: string | null;
+        };
+        /**
+         * FilterableRangeParameters
+         * @description Nombres de parámetro de los dos extremos de un operador de rango (``between``).
+         */
+        FilterableRangeParameters: {
+            /** From */
+            from: string;
+            /** To */
+            to: string;
+        };
         /** ForgotPasswordRequest */
         ForgotPasswordRequest: {
             /**
@@ -961,6 +1028,11 @@ export interface components {
              * @default []
              */
             filters: components["schemas"]["ResourceFilterCapability"][];
+            /**
+             * Filterable Fields
+             * @default []
+             */
+            filterable_fields: components["schemas"]["FilterableFieldCapability"][];
             pagination: components["schemas"]["PaginationCapability"];
             search: components["schemas"]["SearchCapability"];
             sort: components["schemas"]["SortCapability"];
@@ -1339,7 +1411,7 @@ export interface components {
          * WidgetType
          * @enum {string}
          */
-        WidgetType: "text" | "email" | "password" | "switch" | "textarea" | "multiselect" | "select";
+        WidgetType: "text" | "email" | "password" | "switch" | "textarea" | "multiselect" | "select" | "date" | "daterange";
     };
     responses: never;
     parameters: never;
@@ -1860,6 +1932,15 @@ export interface operations {
                 is_active?: boolean | null;
                 name?: string | null;
                 id_in?: string[] | null;
+                name_ne?: string | null;
+                name_contains?: string | null;
+                name_startswith?: string | null;
+                name_endswith?: string | null;
+                created_at_on?: string | null;
+                created_at_before?: string | null;
+                created_at_after?: string | null;
+                created_at_from?: string | null;
+                created_at_to?: string | null;
                 q?: string | null;
             };
             header?: never;
@@ -2208,7 +2289,21 @@ export interface operations {
                 sort?: string;
                 is_active?: boolean | null;
                 email?: string | null;
+                name?: string | null;
                 id_in?: string[] | null;
+                name_ne?: string | null;
+                name_contains?: string | null;
+                name_startswith?: string | null;
+                name_endswith?: string | null;
+                email_ne?: string | null;
+                email_contains?: string | null;
+                email_startswith?: string | null;
+                email_endswith?: string | null;
+                created_at_on?: string | null;
+                created_at_before?: string | null;
+                created_at_after?: string | null;
+                created_at_from?: string | null;
+                created_at_to?: string | null;
                 q?: string | null;
             };
             header?: never;
