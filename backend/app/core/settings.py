@@ -1,13 +1,13 @@
-
+from typing import Literal
 from pydantic_settings import BaseSettings
 from pydantic import SecretStr, computed_field, model_validator, PostgresDsn
 from pydantic_core import MultiHostUrl
 from fastapi_mail import ConnectionConfig
-from typing import Literal
 from functools import lru_cache
 from typing_extensions import Self
 
 from backend.app.core.csrf import normalize_browser_origin
+
 
 class Settings(BaseSettings):
     project_name: str = "FastAPI"
@@ -83,10 +83,16 @@ class Settings(BaseSettings):
     smtp_ssl: bool
     smtp_use_credentials: bool
 
+    bootstrap_admin_email: str | None = None
+    bootstrap_admin_password: SecretStr | None = None
+    bootstrap_admin_name: str = "Admin"
+    bootstrap_admin_last_name: str = "Platform"
+    bootstrap_admin_role_name: str = "Administrador"
+    bootstrap_user_role_name: str = "Usuario"
+
     @computed_field
     @property
     def mail_config(self) -> ConnectionConfig:
-
         return ConnectionConfig(
             MAIL_USERNAME=self.smtp_user,
             MAIL_PASSWORD=self.smtp_password,
@@ -100,13 +106,12 @@ class Settings(BaseSettings):
             VALIDATE_CERTS=True,
         )
 
-
-
 @lru_cache()
 def get_settings() -> Settings:
     """
     Obtiene una instancia única y en caché de :class:`Settings`.
     """
-    return Settings() # pyright: ignore[reportCallIssue]
+    return Settings()  # pyright: ignore[reportCallIssue]
+
 
 settings: Settings = get_settings()
