@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import type {
+  ItemReference,
   ResourceListCapability,
   ResourceRelationCapability,
 } from "@/core/api/contracts";
@@ -9,8 +10,8 @@ import type { ResourceListQuery } from "@/core/resources/list-query";
 
 import { formatCell } from "./format-cell";
 
-function rowId(row: Record<string, unknown>): string | null {
-  const value = row.id;
+function rowId(row: Record<string, unknown>, field: string): string | null {
+  const value = row[field];
   return typeof value === "string" && value !== "" ? value : null;
 }
 
@@ -49,6 +50,8 @@ export function ResourceTable({
   buildSortHref,
   resourceName,
   relations = [],
+  itemReference = null,
+  editEnabled = false,
 }: Readonly<{
   label: string;
   list: ResourceListCapability;
@@ -57,14 +60,18 @@ export function ResourceTable({
   buildSortHref: (fieldName: string) => string;
   resourceName: string;
   relations?: ResourceRelationCapability[];
+  itemReference?: ItemReference | null;
+  editEnabled?: boolean;
 }>) {
   const columns = list.fields.filter((field) => field.visible_in_list);
   const { items } = page;
-  const hasRelations = relations.length > 0;
-  const totalColumns = columns.length + (hasRelations ? 1 : 0);
+  const idField = itemReference?.field ?? "id";
+  const hasActions = editEnabled || relations.length > 0;
+  const totalColumns = columns.length + (hasActions ? 1 : 0);
 
-  function relationHref(id: string, relationName: string): string {
-    return `/resources/${encodeURIComponent(resourceName)}/${encodeURIComponent(id)}/${encodeURIComponent(relationName)}`;
+  function itemHref(id: string, ...segments: string[]): string {
+    const tail = segments.map((segment) => encodeURIComponent(segment)).join("/");
+    return `/resources/${encodeURIComponent(resourceName)}/${encodeURIComponent(id)}/${tail}`;
   }
 
   return (
@@ -100,9 +107,9 @@ export function ResourceTable({
                   </th>
                 );
               })}
-              {hasRelations ? (
+              {hasActions ? (
                 <th scope="col" className="px-4 py-3 text-left font-medium text-slate-600">
-                  Relaciones
+                  Acciones
                 </th>
               ) : null}
             </tr>
@@ -119,7 +126,7 @@ export function ResourceTable({
               </tr>
             ) : (
               items.map((row, rowIndex) => {
-                const id = rowId(row);
+                const id = rowId(row, idField);
                 return (
                   <tr key={rowIndex} className="hover:bg-slate-50">
                     {columns.map((column) => (
@@ -127,14 +134,22 @@ export function ResourceTable({
                         {formatCell(row[column.name], column.type)}
                       </td>
                     ))}
-                    {hasRelations ? (
+                    {hasActions ? (
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-3">
+                          {id && editEnabled ? (
+                            <Link
+                              href={itemHref(id, "edit")}
+                              className="text-sm font-medium text-slate-700 underline-offset-2 hover:text-slate-900 hover:underline"
+                            >
+                              Editar
+                            </Link>
+                          ) : null}
                           {id
                             ? relations.map((relation) => (
                                 <Link
                                   key={relation.name}
-                                  href={relationHref(id, relation.name)}
+                                  href={itemHref(id, relation.name)}
                                   className="text-sm font-medium text-slate-700 underline-offset-2 hover:text-slate-900 hover:underline"
                                 >
                                   {relation.label}

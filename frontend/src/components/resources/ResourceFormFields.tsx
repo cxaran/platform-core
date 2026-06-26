@@ -11,10 +11,17 @@ function fieldInputType(widget: ResourceFormFieldCapability["widget"]): string {
 export function ResourceFormFields({
   fields,
   fieldErrors,
+  initialValues = {},
 }: Readonly<{
   fields: readonly ResourceFormFieldCapability[];
   fieldErrors: FieldErrors;
+  initialValues?: Record<string, unknown>;
 }>) {
+  function initialText(name: string): string {
+    const value = initialValues[name];
+    return value == null ? "" : String(value);
+  }
+
   return (
     <div className="space-y-4">
       {fields.map((field) => {
@@ -28,6 +35,7 @@ export function ResourceFormFields({
                 <input
                   type="checkbox"
                   name={field.name}
+                  defaultChecked={Boolean(initialValues[field.name])}
                   className="h-4 w-4 rounded border-slate-300 text-slate-950"
                   aria-describedby={errorId}
                 />
@@ -55,6 +63,7 @@ export function ResourceFormFields({
                 id={field.name}
                 name={field.name}
                 required={field.required}
+                defaultValue={initialText(field.name)}
                 aria-describedby={errorId}
                 className="mt-1 min-h-28 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-slate-500 focus:outline-none"
               />
@@ -64,6 +73,7 @@ export function ResourceFormFields({
                 name={field.name}
                 type={fieldInputType(field.widget)}
                 required={field.required}
+                defaultValue={initialText(field.name)}
                 aria-describedby={errorId}
                 className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-slate-500 focus:outline-none"
               />

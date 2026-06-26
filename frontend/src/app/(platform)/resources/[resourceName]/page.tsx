@@ -103,6 +103,10 @@ export default async function ResourcePage({ params, searchParams }: PageProps) 
         buildSortHref={(fieldName) => buildSortHref(basePath, query, controls, fieldName)}
         resourceName={resourceName}
         relations={capability.relations ?? []}
+        itemReference={capability.item_reference ?? null}
+        editEnabled={Boolean(
+          capability.item_reference && capability.detail && capability.forms?.update,
+        )}
       />
       <ResourcePagination prevHref={prevHref} nextHref={nextHref} pagination={pagination} />
     </div>

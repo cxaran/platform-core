@@ -30,6 +30,22 @@ export function createResource(
 }
 
 /**
+ * Actualización de un recurso: envía el payload allowlisted con el método y la URL
+ * declarados por el contrato. La URL ya viene resuelta (placeholder sustituido).
+ */
+export function updateResource(
+  url: string,
+  method: HttpMethod,
+  payload: Record<string, unknown>,
+): Promise<unknown> {
+  assertInternalApiPath(url);
+  return browserApi<unknown>(url, {
+    method,
+    body: payload,
+  });
+}
+
+/**
  * Reemplazo atómico de una relación: envía la lista completa de valores objetivo en
  * el campo declarado por el contrato. La ruta ya viene resuelta (``{id}`` sustituido)
  * y se valida como path interno antes de usarse.
