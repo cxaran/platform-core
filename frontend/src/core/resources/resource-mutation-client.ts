@@ -1,6 +1,9 @@
 "use client";
 
-import type { ResourceFormCapability } from "@/core/api/contracts";
+import type {
+  HttpMethod,
+  ResourceFormCapability,
+} from "@/core/api/contracts";
 import { browserApi } from "@/core/api/browser-client";
 
 function assertInternalApiPath(path: string): void {
@@ -23,5 +26,23 @@ export function createResource(
   return browserApi<unknown>(form.url_template, {
     method: form.method,
     body: payload,
+  });
+}
+
+/**
+ * Reemplazo atómico de una relación: envía la lista completa de valores objetivo en
+ * el campo declarado por el contrato. La ruta ya viene resuelta (``{id}`` sustituido)
+ * y se valida como path interno antes de usarse.
+ */
+export function replaceRelation(
+  url: string,
+  method: HttpMethod,
+  requestField: string,
+  values: readonly string[],
+): Promise<unknown> {
+  assertInternalApiPath(url);
+  return browserApi<unknown>(url, {
+    method,
+    body: { [requestField]: values },
   });
 }

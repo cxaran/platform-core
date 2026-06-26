@@ -866,6 +866,8 @@ export interface components {
             editable: boolean;
             /** Selection Url */
             selection_url: string;
+            /** Selection Field */
+            selection_field?: string | null;
             mutation_method: components["schemas"]["HttpMethod"];
             /** Mutation Url */
             mutation_url: string;

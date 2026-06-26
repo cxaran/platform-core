@@ -220,6 +220,8 @@ class ResourceRelationsTest(unittest.TestCase):
         self.assertEqual(relation["mutation_method"], "PUT")
         self.assertEqual(relation["mutation_url"], "/api/v1/users/{id}/roles")
         self.assertEqual(relation["request_field"], "role_ids")
+        # Selección paginada: sin selection_field (se lee items[].id).
+        self.assertNotIn("selection_field", relation)
         self.assertEqual(relation["options"]["type"], "list")
         self.assertEqual(relation["options"]["url"], "/api/v1/roles")
         self.assertEqual(relation["options"]["value_field"], "id")
@@ -230,6 +232,7 @@ class ResourceRelationsTest(unittest.TestCase):
             roles = client.get("/api/v1/resources/roles").json()
         relation = next(r for r in roles["relations"] if r["name"] == "permissions")
         self.assertEqual(relation["selection_url"], "/api/v1/roles/{id}/permissions")
+        self.assertEqual(relation["selection_field"], "permissions")
         self.assertEqual(relation["mutation_url"], "/api/v1/roles/{id}/permissions")
         self.assertEqual(relation["request_field"], "permissions")
         self.assertEqual(relation["options"]["type"], "grouped_catalog")

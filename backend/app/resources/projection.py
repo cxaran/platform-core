@@ -418,6 +418,7 @@ def _relation_capability(relation: RelationDef) -> ResourceRelationCapability:
         required=relation.required,
         editable=True,
         selection_url=relation.selection_url_template,
+        selection_field=relation.selection_field,
         mutation_method=relation.mutation_method,
         mutation_url=relation.mutation_url_template,
         request_field=relation.request_field,

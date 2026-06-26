@@ -189,6 +189,10 @@ class ResourceRelationCapability(ApiReadSchema):
     required: bool
     editable: bool
     selection_url: str
+    # Campo de la respuesta de ``selection_url`` con la lista de valores actuales.
+    # Ausente cuando la selección es una página (``items[]``) y el valor se lee con
+    # ``options.value_field``.
+    selection_field: Optional[str] = None
     mutation_method: HttpMethod
     mutation_url: str
     request_field: str

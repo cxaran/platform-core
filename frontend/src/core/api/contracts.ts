@@ -22,6 +22,7 @@ export type ResourceView = components["schemas"]["ResourceView"];
 export type FieldValueType = components["schemas"]["FieldValueType"];
 export type WidgetType = components["schemas"]["WidgetType"];
 export type FilterOperator = components["schemas"]["FilterOperator"];
+export type HttpMethod = components["schemas"]["HttpMethod"];
 
 // Respuesta del catálogo derivada de la operación real (no se reescribe el array a mano).
 export type ResourceCatalog =

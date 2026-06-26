@@ -105,6 +105,10 @@ class RelationDef:
     cardinality: RelationCardinality
     required: bool
     selection_url_template: str
+    # Campo de la respuesta de ``selection_url`` que contiene la lista de valores
+    # actualmente seleccionados. Si es ``None``, la selección es una página
+    # (``items[]``) y el valor de cada item se lee con ``options_value_field``.
+    selection_field: Optional[str]
     mutation_method: HttpMethod
     mutation_url_template: str
     request_field: str
@@ -173,6 +177,7 @@ RESOURCE_REGISTRY: tuple[ResourceDefinition, ...] = (
                 cardinality=RelationCardinality.MULTIPLE,
                 required=False,
                 selection_url_template="/api/v1/users/{id}/roles",
+                selection_field=None,
                 mutation_method=HttpMethod.PUT,
                 mutation_url_template="/api/v1/users/{id}/roles",
                 request_field="role_ids",
@@ -215,6 +220,7 @@ RESOURCE_REGISTRY: tuple[ResourceDefinition, ...] = (
                 cardinality=RelationCardinality.MULTIPLE,
                 required=False,
                 selection_url_template="/api/v1/roles/{id}/permissions",
+                selection_field="permissions",
                 mutation_method=HttpMethod.PUT,
                 mutation_url_template="/api/v1/roles/{id}/permissions",
                 request_field="permissions",

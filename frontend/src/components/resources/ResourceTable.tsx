@@ -1,10 +1,18 @@
 import Link from "next/link";
 
-import type { ResourceListCapability } from "@/core/api/contracts";
+import type {
+  ResourceListCapability,
+  ResourceRelationCapability,
+} from "@/core/api/contracts";
 import type { ResourceListPage } from "@/core/resources/list-types";
 import type { ResourceListQuery } from "@/core/resources/list-query";
 
 import { formatCell } from "./format-cell";
+
+function rowId(row: Record<string, unknown>): string | null {
+  const value = row.id;
+  return typeof value === "string" && value !== "" ? value : null;
+}
 
 function SortableHeader({
   label,
@@ -39,15 +47,25 @@ export function ResourceTable({
   page,
   explicitSort,
   buildSortHref,
+  resourceName,
+  relations = [],
 }: Readonly<{
   label: string;
   list: ResourceListCapability;
   page: ResourceListPage;
   explicitSort: ResourceListQuery["sort"];
   buildSortHref: (fieldName: string) => string;
+  resourceName: string;
+  relations?: ResourceRelationCapability[];
 }>) {
   const columns = list.fields.filter((field) => field.visible_in_list);
   const { items } = page;
+  const hasRelations = relations.length > 0;
+  const totalColumns = columns.length + (hasRelations ? 1 : 0);
+
+  function relationHref(id: string, relationName: string): string {
+    return `/resources/${encodeURIComponent(resourceName)}/${encodeURIComponent(id)}/${encodeURIComponent(relationName)}`;
+  }
 
   return (
     <section className="space-y-4">
@@ -82,28 +100,53 @@ export function ResourceTable({
                   </th>
                 );
               })}
+              {hasRelations ? (
+                <th scope="col" className="px-4 py-3 text-left font-medium text-slate-600">
+                  Relaciones
+                </th>
+              ) : null}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {items.length === 0 ? (
               <tr>
                 <td
-                  colSpan={columns.length || 1}
+                  colSpan={totalColumns || 1}
                   className="px-4 py-8 text-center text-slate-500"
                 >
                   No hay registros.
                 </td>
               </tr>
             ) : (
-              items.map((row, rowIndex) => (
-                <tr key={rowIndex} className="hover:bg-slate-50">
-                  {columns.map((column) => (
-                    <td key={column.name} className="px-4 py-3 text-slate-800">
-                      {formatCell(row[column.name], column.type)}
-                    </td>
-                  ))}
-                </tr>
-              ))
+              items.map((row, rowIndex) => {
+                const id = rowId(row);
+                return (
+                  <tr key={rowIndex} className="hover:bg-slate-50">
+                    {columns.map((column) => (
+                      <td key={column.name} className="px-4 py-3 text-slate-800">
+                        {formatCell(row[column.name], column.type)}
+                      </td>
+                    ))}
+                    {hasRelations ? (
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-3">
+                          {id
+                            ? relations.map((relation) => (
+                                <Link
+                                  key={relation.name}
+                                  href={relationHref(id, relation.name)}
+                                  className="text-sm font-medium text-slate-700 underline-offset-2 hover:text-slate-900 hover:underline"
+                                >
+                                  {relation.label}
+                                </Link>
+                              ))
+                            : null}
+                        </div>
+                      </td>
+                    ) : null}
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
