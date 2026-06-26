@@ -13,6 +13,11 @@ fastapi-mail==1.6.5
 python-multipart==0.0.32
 redis==8.0.0
 
+# Base IANA de zonas horarias para zoneinfo (semántica de calendario de filtros de
+# fecha). Garantiza disponibilidad en Windows y en la imagen slim, sin depender del
+# tzdata del sistema.
+tzdata==2026.2
+
 argon2-cffi==25.1.0
 
 # Elige una estrategia JWT principal:

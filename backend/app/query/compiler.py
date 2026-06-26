@@ -1,11 +1,15 @@
 from typing import Any, NoReturn
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import Select
 from sqlalchemy.orm.attributes import InstrumentedAttribute
 from sqlalchemy.sql.elements import ColumnElement
 
-from backend.app.query.plans import CompiledQueryPlan
+from backend.app.query.calendar import day_start_utc, next_day_start_utc
+from backend.app.query.operators import Operator
+from backend.app.query.plans import CompiledExtendedFilter, CompiledQueryPlan
 from backend.app.query.schema import OffsetQuerySchema
+from backend.app.query.search import escape_like
 from backend.app.query.validation import fail_query
 
 QueryableColumn = ColumnElement[Any] | InstrumentedAttribute[Any]
@@ -51,6 +55,9 @@ def apply_query_schema(
             column = all_columns[field_name]
             stmt = stmt.where(column.is_(None) if isnull else column.isnot(None))
 
+    if resolved.extended_filters:
+        stmt = _apply_extended_filters(stmt, query, resolved)
+
     q = getattr(query, "q", None)
     if q is not None and search_columns:
         stmt = stmt.where(resolved.search_strategy.predicate(search_columns, q))
@@ -70,6 +77,109 @@ def _apply_equality_filter(
     if isinstance(value, bool):
         return stmt.where(column.is_(value))
     return stmt.where(column == value)
+
+
+def _apply_extended_filters(
+    stmt: Select[Any],
+    query: OffsetQuerySchema,
+    plan: CompiledQueryPlan,
+) -> Select[Any]:
+    """Aplica los operadores extendidos de C1 (texto y fecha de calendario).
+
+    La zona horaria de calendario se resuelve una sola vez por request desde el plan.
+    Cada descriptor se omite si su(s) parámetro(s) vienen ``None`` (no enviados).
+    """
+    tz = ZoneInfo(plan.calendar_timezone)
+    for descriptor in plan.extended_filters:
+        column = descriptor.column
+        operator = descriptor.operator
+        if operator is Operator.NE:
+            stmt = _apply_not_equals(stmt, query, descriptor, column)
+        elif operator in (Operator.CONTAINS, Operator.STARTS_WITH, Operator.ENDS_WITH):
+            stmt = _apply_text_match(stmt, query, descriptor, column)
+        elif operator in (Operator.ON, Operator.BEFORE, Operator.AFTER):
+            stmt = _apply_calendar_single(stmt, query, descriptor, column, tz)
+        elif operator is Operator.BETWEEN:
+            stmt = _apply_calendar_between(stmt, query, descriptor, column, tz)
+    return stmt
+
+
+def _apply_not_equals(
+    stmt: Select[Any],
+    query: OffsetQuerySchema,
+    descriptor: CompiledExtendedFilter,
+    column: QueryableColumn,
+) -> Select[Any]:
+    assert descriptor.parameter_name is not None
+    value = getattr(query, descriptor.parameter_name)
+    if value is None:
+        return stmt
+    # Complemento lógico de equals sobre valores no nulos: ``column != value`` ya
+    # excluye NULL en SQL (NULL != v es desconocido). El null se gestiona con isnull.
+    if isinstance(value, bool):
+        return stmt.where(column.isnot(value))
+    return stmt.where(column != value)
+
+
+def _apply_text_match(
+    stmt: Select[Any],
+    query: OffsetQuerySchema,
+    descriptor: CompiledExtendedFilter,
+    column: QueryableColumn,
+) -> Select[Any]:
+    assert descriptor.parameter_name is not None
+    value = getattr(query, descriptor.parameter_name)
+    if value is None:
+        return stmt
+    escaped = escape_like(value)
+    if descriptor.operator is Operator.CONTAINS:
+        pattern = f"%{escaped}%"
+    elif descriptor.operator is Operator.STARTS_WITH:
+        pattern = f"{escaped}%"
+    else:  # ENDS_WITH
+        pattern = f"%{escaped}"
+    return stmt.where(column.ilike(pattern, escape="\\"))
+
+
+def _apply_calendar_single(
+    stmt: Select[Any],
+    query: OffsetQuerySchema,
+    descriptor: CompiledExtendedFilter,
+    column: QueryableColumn,
+    tz: ZoneInfo,
+) -> Select[Any]:
+    assert descriptor.parameter_name is not None
+    value = getattr(query, descriptor.parameter_name)
+    if value is None:
+        return stmt
+    if descriptor.operator is Operator.ON:
+        return stmt.where(column >= day_start_utc(value, tz)).where(
+            column < next_day_start_utc(value, tz)
+        )
+    if descriptor.operator is Operator.BEFORE:
+        return stmt.where(column < day_start_utc(value, tz))
+    # AFTER
+    return stmt.where(column >= next_day_start_utc(value, tz))
+
+
+def _apply_calendar_between(
+    stmt: Select[Any],
+    query: OffsetQuerySchema,
+    descriptor: CompiledExtendedFilter,
+    column: QueryableColumn,
+    tz: ZoneInfo,
+) -> Select[Any]:
+    # Extremos independientes y opcionales: ``from`` inclusivo (inicio de A); ``to``
+    # inclusivo para el usuario (estrictamente menor que el inicio de B+1).
+    assert descriptor.from_parameter is not None
+    assert descriptor.to_parameter is not None
+    from_value = getattr(query, descriptor.from_parameter)
+    to_value = getattr(query, descriptor.to_parameter)
+    if from_value is not None:
+        stmt = stmt.where(column >= day_start_utc(from_value, tz))
+    if to_value is not None:
+        stmt = stmt.where(column < next_day_start_utc(to_value, tz))
+    return stmt
 
 
 def _apply_sort(

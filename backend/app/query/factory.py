@@ -14,9 +14,14 @@ from sqlalchemy.orm.properties import ColumnProperty
 from sqlalchemy.sql.elements import ColumnElement
 
 from backend.app.query.identity import IdentitySpec
-from backend.app.query.operators import Operator
+from backend.app.query.operators import (
+    Operator,
+    between_parameter_names,
+    parameter_name_for,
+)
 from backend.app.query.options import QueryOptions
 from backend.app.query.plans import (
+    CompiledExtendedFilter,
     CompiledQueryPlan,
     _operators_by_field,
     build_filter_parameters,
@@ -36,9 +41,19 @@ class CompiledListQuery:
     plan: CompiledQueryPlan
 
 RESERVED_QUERY_FIELDS = frozenset({"limit", "offset", "sort", "q"})
+# Sufijos de rango heredados que NO pueden aparecer como nombre de campo del schema
+# público (evita parámetros ambiguos). Los sufijos de los operadores extendidos de C1
+# (_ne, _contains, _on, _from, …) NO se reservan proactivamente aquí: colisionan con
+# nombres legítimos (p. ej. ``created_on``) y solo se generan de forma opt-in, así que
+# su colisión real la detecta ``_guard_generated_collision`` al generar el parámetro.
 GENERATED_SUFFIXES = ("_gte", "_lte", "_in", "_isnull")
 RANGE_TYPES = (int, Decimal, date, datetime)
 EQUALITY_TYPES = (str, EmailStr, UUID, bool)
+
+# Operadores de fecha de calendario de un solo parámetro (``between`` se trata aparte).
+_DATE_SINGLE_OPERATORS = (Operator.ON, Operator.BEFORE, Operator.AFTER)
+# Operadores de coincidencia parcial de texto (ILIKE escapado, case-insensitive).
+_TEXT_MATCH_ORDER = (Operator.CONTAINS, Operator.STARTS_WITH, Operator.ENDS_WITH)
 
 
 def make_offset_query_schema(
@@ -119,6 +134,19 @@ def compile_list_query(
     in_fields = _register_in_filters(field_definitions, all_columns, field_types, query_options)
     null_filter_fields = _register_null_filters(field_definitions, all_columns, query_options)
 
+    extended_filters: list[CompiledExtendedFilter] = []
+    for field_name, operators in query_options.field_operators.items():
+        extended_filters.extend(
+            _register_extended_filters(
+                field_name=field_name,
+                field_type=field_types[field_name],
+                column=all_columns[field_name],
+                operators=frozenset(operators),
+                field_definitions=field_definitions,
+                max_filter_text_length=query_options.max_filter_text_length,
+            )
+        )
+
     search_columns = tuple(
         _search_column(field_name, all_columns, field_types)
         for field_name in query_options.search_fields
@@ -158,6 +186,8 @@ def compile_list_query(
         max_in_values=query_options.max_in_values,
         max_sort_length=query_options.max_sort_length,
         max_filter_text_length=query_options.max_filter_text_length,
+        extended_filters=tuple(extended_filters),
+        calendar_timezone=_application_timezone(),
     )
 
 
@@ -179,6 +209,7 @@ def compile_list_query_from_policy(
     in_fields: set[str] = set()
     null_filter_fields: set[str] = set()
     search_columns_list: list[ColumnElement[Any] | InstrumentedAttribute[Any]] = []
+    extended_filters: list[CompiledExtendedFilter] = []
 
     for spec in policy.fields:
         all_columns[spec.name] = spec.source
@@ -202,6 +233,16 @@ def compile_list_query_from_policy(
         if Operator.ISNULL in spec.operators:
             field_definitions[f"{spec.name}_isnull"] = (bool | None, None)
             null_filter_fields.add(spec.name)
+        extended_filters.extend(
+            _register_extended_filters(
+                field_name=spec.name,
+                field_type=spec.type,
+                column=spec.source,
+                operators=spec.operators,
+                field_definitions=field_definitions,
+                max_filter_text_length=policy.limits.max_filter_text_length,
+            )
+        )
         if spec.searchable:
             search_columns_list.append(spec.source)
 
@@ -267,6 +308,8 @@ def compile_list_query_from_policy(
         max_in_values=policy.limits.max_in_values,
         max_sort_length=policy.limits.max_sort_length,
         max_filter_text_length=policy.limits.max_filter_text_length,
+        extended_filters=tuple(extended_filters),
+        calendar_timezone=_application_timezone(),
     )
 
 
@@ -289,6 +332,8 @@ def _build_compiled(
     max_in_values: int,
     max_sort_length: int,
     max_filter_text_length: int,
+    extended_filters: tuple[CompiledExtendedFilter, ...] = (),
+    calendar_timezone: str = "UTC",
 ) -> CompiledListQuery:
     """Ensamblado compartido: crea el schema Pydantic, fija ``__query_*__`` (ruta
     heredada / fallback) y construye el ``CompiledQueryPlan``."""
@@ -347,8 +392,21 @@ def _build_compiled(
         max_sort_length=max_sort_length,
         max_filter_text_length=max_filter_text_length,
         filter_parameters=filter_parameters,
+        extended_filters=extended_filters,
+        calendar_timezone=calendar_timezone,
     )
     return CompiledListQuery(schema=query_schema, plan=plan)
+
+
+def _application_timezone() -> str:
+    """Snapshot de la zona horaria de aplicación (IANA) al compilar el plan.
+
+    Import diferido para no acoplar el motor de query a ``settings`` en import-time y
+    para reflejar parches de configuración en pruebas (se lee al compilar, no al
+    importar el módulo)."""
+    from backend.app.core.settings import settings
+
+    return settings.application_timezone
 
 
 def _optional_filter_field_with_limit(field_type: type[Any], max_filter_text_length: int) -> tuple[Any, Any]:
@@ -391,6 +449,96 @@ def _register_null_filters(
     return null_filter_fields
 
 
+def _register_extended_filters(
+    *,
+    field_name: str,
+    field_type: type[Any],
+    column: ColumnElement[Any] | InstrumentedAttribute[Any],
+    operators: frozenset[Operator] | set[Operator],
+    field_definitions: dict[str, tuple[Any, Any]],
+    max_filter_text_length: int,
+) -> list[CompiledExtendedFilter]:
+    """Genera los parámetros de query y los descriptores compilados de los operadores
+    extendidos de C1 (texto y fecha) presentes en ``operators``.
+
+    Fuente única: ``operators`` ya fusiona las listas declarativas y
+    ``field_operators``. Solo procesa el subconjunto de C1
+    (``ne/contains/starts_with/ends_with/on/before/after/between``); ``eq/gte/lte/in/
+    isnull`` los registran las rutas existentes. Valida el tipo por operador y falla en
+    config (no en runtime) ante un operador incompatible con el tipo del campo.
+    """
+    descriptors: list[CompiledExtendedFilter] = []
+
+    # not_equals: complemento lógico de equals sobre valores no nulos. Aplica a
+    # cualquier escalar soportado (mismo dominio que eq); el null se gestiona solo con
+    # el operador isnull, nunca con una negación ambigua de ILIKE.
+    if Operator.NE in operators:
+        generated = parameter_name_for(field_name, Operator.NE)
+        _guard_generated_collision(generated, field_definitions)
+        field_definitions[generated] = _optional_filter_field_with_limit(
+            field_type, max_filter_text_length
+        )
+        descriptors.append(
+            CompiledExtendedFilter(field_name, Operator.NE, column, parameter_name=generated)
+        )
+
+    # contains / starts_with / ends_with: solo texto (ILIKE escapado, case-insensitive).
+    for operator in _TEXT_MATCH_ORDER:
+        if operator not in operators:
+            continue
+        if not _is_text_type(field_type):
+            _fail(
+                "unsupported_operator_for_type",
+                f"El operador '{operator.value}' requiere un campo de texto: '{field_name}'.",
+            )
+        generated = parameter_name_for(field_name, operator)
+        _guard_generated_collision(generated, field_definitions)
+        field_definitions[generated] = (str | None, Field(default=None, max_length=max_filter_text_length))
+        descriptors.append(
+            CompiledExtendedFilter(field_name, operator, column, parameter_name=generated)
+        )
+
+    # on / before / after: solo columnas datetime (semántica de día de calendario).
+    for operator in _DATE_SINGLE_OPERATORS:
+        if operator not in operators:
+            continue
+        if not _is_calendar_type(field_type):
+            _fail(
+                "unsupported_operator_for_type",
+                f"El operador '{operator.value}' requiere un campo datetime: '{field_name}'.",
+            )
+        generated = parameter_name_for(field_name, operator)
+        _guard_generated_collision(generated, field_definitions)
+        field_definitions[generated] = (date | None, None)
+        descriptors.append(
+            CompiledExtendedFilter(field_name, operator, column, parameter_name=generated)
+        )
+
+    # between: dos parámetros (_from, _to), ambos inclusivos para el usuario.
+    if Operator.BETWEEN in operators:
+        if not _is_calendar_type(field_type):
+            _fail(
+                "unsupported_operator_for_type",
+                f"El operador 'between' requiere un campo datetime: '{field_name}'.",
+            )
+        from_param, to_param = between_parameter_names(field_name)
+        _guard_generated_collision(from_param, field_definitions)
+        _guard_generated_collision(to_param, field_definitions)
+        field_definitions[from_param] = (date | None, None)
+        field_definitions[to_param] = (date | None, None)
+        descriptors.append(
+            CompiledExtendedFilter(
+                field_name,
+                Operator.BETWEEN,
+                column,
+                from_parameter=from_param,
+                to_parameter=to_param,
+            )
+        )
+
+    return descriptors
+
+
 def _require_filterable_field(
     field_name: str,
     columns: dict[str, ColumnElement[Any] | InstrumentedAttribute[Any]],
@@ -423,6 +571,7 @@ def _requested_fields(options: QueryOptions) -> tuple[str, ...]:
         options.search_fields,
         options.in_fields,
         options.null_filter_fields,
+        tuple(options.field_operators.keys()),
     ):
         fields.extend(group)
     return tuple(dict.fromkeys(fields))
@@ -669,6 +818,12 @@ def _is_enum(field_type: Any) -> bool:
 
 def _is_text_type(field_type: Any) -> bool:
     return field_type is str or field_type is EmailStr
+
+
+def _is_calendar_type(field_type: Any) -> bool:
+    """Los operadores de fecha de calendario (on/before/after/between) aplican solo a
+    columnas ``datetime`` (semántica de límites de día en la zona de aplicación)."""
+    return field_type is datetime
 
 
 def _is_direct_model_column(value: Any) -> bool:

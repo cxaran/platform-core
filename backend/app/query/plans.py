@@ -47,6 +47,27 @@ class CompiledFilterParameter:
     parameter_name: str
 
 
+@dataclass(frozen=True)
+class CompiledExtendedFilter:
+    """Filtro extendido de C1 (texto/fecha) compilado: operador, columna y nombre(s)
+    de parámetro HTTP. Estructura interna del plan (la fuente declarativa pública es
+    ``field_operators`` en ``QueryOptions``/``QueryPolicy``); el compiler la aplica y
+    la projection la proyecta en el contrato de capacidades.
+
+    ``parameter_name`` aplica a operadores de un solo parámetro
+    (``ne/contains/starts_with/ends_with/on/before/after``). ``from_parameter`` y
+    ``to_parameter`` aplican solo a ``between`` (dos parámetros, ambos inclusivos para
+    el usuario).
+    """
+
+    field_name: str
+    operator: Operator
+    column: QueryColumn
+    parameter_name: str | None = None
+    from_parameter: str | None = None
+    to_parameter: str | None = None
+
+
 def build_filter_parameters(
     field_order: Sequence[str],
     operators_by_field: Mapping[str, frozenset[Operator]],
@@ -135,6 +156,12 @@ class CompiledQueryPlan:
     # Mapeo público de parámetros de filtro. Default vacío solo por compatibilidad del
     # constructor/fixtures; toda ruta de construcción real lo puebla completo.
     filter_parameters: tuple[CompiledFilterParameter, ...] = ()
+    # Filtros extendidos de C1 (texto/fecha) compilados. Vacío en la ruta heredada
+    # (from_schema), que no conoce estos operadores.
+    extended_filters: tuple[CompiledExtendedFilter, ...] = ()
+    # Zona horaria de aplicación (IANA) usada por los operadores de fecha de calendario
+    # para resolver límites de día. Snapshot de settings al compilar.
+    calendar_timezone: str = "UTC"
 
     def __post_init__(self) -> None:
         # Snapshot independiente e inmutable: el plan no comparte contenedores
@@ -151,6 +178,7 @@ class CompiledQueryPlan:
         object.__setattr__(self, "primary_keys", tuple(self.primary_keys))
         object.__setattr__(self, "tie_breakers", tuple(self.tie_breakers))
         object.__setattr__(self, "filter_parameters", tuple(self.filter_parameters))
+        object.__setattr__(self, "extended_filters", tuple(self.extended_filters))
 
     @classmethod
     def from_schema(cls, query_type: type[Any]) -> CompiledQueryPlan:

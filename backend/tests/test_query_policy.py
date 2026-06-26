@@ -79,7 +79,7 @@ class OperatorsUnitTest(unittest.TestCase):
 
     def test_normalize_rejects_unknown_operator(self) -> None:
         with self.assertRaises(ValueError):
-            normalize_operators(["contains"])
+            normalize_operators(["definitely_not_an_operator"])
 
     def test_default_operators_by_type(self) -> None:
         self.assertEqual(default_operators(str), frozenset({Operator.EQ}))

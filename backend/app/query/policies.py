@@ -118,6 +118,9 @@ def policy_from_options(
             operators.add(Operator.IN)
         if name in options.null_filter_fields:
             operators.add(Operator.ISNULL)
+        # Operadores extendidos de C1 declarados por campo (fuente única; se fusionan
+        # con los derivados de las listas anteriores, sin allowlist paralela).
+        operators.update(options.field_operators.get(name, ()))
 
         specs.append(
             FieldSpec(

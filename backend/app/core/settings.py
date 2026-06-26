@@ -51,6 +51,23 @@ class Settings(BaseSettings):
     redis_port: int
     redis_db: int
 
+    # Zona horaria de aplicación (IANA) para la semántica de calendario de los filtros
+    # de fecha. Default determinista UTC; dev/E2E pueden fijar p. ej. America/Monterrey.
+    # Nunca se depende de la TZ del host, contenedor, navegador o PostgreSQL.
+    application_timezone: str = "UTC"
+
+    @model_validator(mode="after")
+    def _validate_application_timezone(self) -> Self:
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+        try:
+            ZoneInfo(self.application_timezone)
+        except (ZoneInfoNotFoundError, ValueError) as error:
+            raise ValueError(
+                f"application_timezone inválida (debe ser IANA ZoneInfo): {self.application_timezone!r}"
+            ) from error
+        return self
+
     # Rate limiting de rutas públicas de auth (ver security/rate_limit.py). Buckets
     # como "limit/window_seconds"; configurables por ambiente. ``fail_open`` solo se
     # respeta fuera de producción. ``trusted_proxies`` es CSV de IPs de proxy.

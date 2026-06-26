@@ -4,6 +4,8 @@ from typing import TYPE_CHECKING, Any, Mapping
 from sqlalchemy.orm.attributes import InstrumentedAttribute
 from sqlalchemy.sql.elements import ColumnElement
 
+from backend.app.query.operators import Operator
+
 if TYPE_CHECKING:
     from backend.app.query.policies import QueryPolicy
 
@@ -14,6 +16,10 @@ def _empty_column_bindings() -> dict[str, QueryColumn]:
     return {}
 
 
+def _empty_field_operators() -> dict[str, tuple[Operator, ...]]:
+    return {}
+
+
 @dataclass(frozen=True, slots=True)
 class QueryOptions:
     filter_fields: tuple[str, ...] = ()
@@ -21,6 +27,13 @@ class QueryOptions:
     search_fields: tuple[str, ...] = ()
     in_fields: tuple[str, ...] = ()
     null_filter_fields: tuple[str, ...] = ()
+    # Fuente declarativa única de operadores extendidos por campo (texto y fecha de
+    # C1: ne/contains/starts_with/ends_with/on/before/after/between). No es una
+    # allowlist paralela: se fusiona con los operadores derivados de las listas
+    # anteriores en una sola declaración por campo (ver policies.policy_from_options).
+    field_operators: Mapping[str, tuple[Operator, ...]] = field(
+        default_factory=_empty_field_operators
+    )
     column_bindings: Mapping[str, QueryColumn] = field(default_factory=_empty_column_bindings)
     default_sort: str | None = None
     max_limit: int = 100

@@ -11,6 +11,7 @@ BACKEND_CANONICAL_TEST_MODULES = (
     "backend.tests.test_query_contract",
     "backend.tests.test_query_sort_roles",
     "backend.tests.test_query_strategies",
+    "backend.tests.test_query_extended_operators",
     "backend.tests.test_error_contract",
     "backend.tests.test_query_postgres",
     "backend.tests.test_security_catalog",
