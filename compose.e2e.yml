@@ -31,6 +31,10 @@ x-backend-environment: &backend-environment
   RATE_LIMIT_BOOTSTRAP_IP: "100/900"
   RATE_LIMIT_FORGOT_IP: "2/900"
   RATE_LIMIT_FORGOT_IDENTITY: "100/3600"
+  RATE_LIMIT_REGISTER_REQUEST_IP: "100/3600"
+  RATE_LIMIT_REGISTER_REQUEST_IDENTITY: "100/3600"
+  # Registro habilitado SOLO en el entorno E2E aislado para cubrir el happy path.
+  REGISTRATION_ENABLED: "true"
 
 services:
   redis:
@@ -115,3 +119,6 @@ services:
     image: axllent/mailpit:latest
     expose:
       - "1025"
+    # API HTTP solo en loopback del host para que Playwright lea tokens en E2E.
+    ports:
+      - "127.0.0.1:31025:8025"

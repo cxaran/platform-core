@@ -14,6 +14,10 @@ const systemAdminRoleName = "Administrador de plataforma";
 const actionUserEmail = "acciones.e2e@example.com";
 const actionUserPassword = "Action-password-123";
 const actionRoleName = "Rol Acciones";
+const newUserEmail = "registro.e2e@example.com";
+const newUserPassword = "Register-password-123";
+const resetNewPassword = "Reset-newpass-456";
+const mailpitBase = process.env.E2E_MAILPIT_URL ?? "http://127.0.0.1:31025";
 const appBaseUrl = process.env.E2E_BASE_URL ?? "http://127.0.0.1:31080";
 const repoRoot = resolve(process.cwd(), "..");
 const composeFile = resolve(repoRoot, "compose.e2e.yml");
@@ -68,6 +72,53 @@ async function login(page: Page, email: string, password: string) {
   await page.getByRole("button", { name: "Ingresar" }).click();
 }
 
+// Limpia solo las claves de rate limit del Redis E2E para aislar el bucket de un
+// escenario sin desactivar el rate limiting ni tocar tokens/sesiones.
+function clearRateLimitKeys() {
+  composeExec([
+    "exec",
+    "-T",
+    "redis",
+    "sh",
+    "-c",
+    "redis-cli --scan --pattern 'platform-core:rate-limit:*' | xargs -r redis-cli del",
+  ]);
+}
+
+// Recupera un token de Mailpit por destinatario, en memoria, con polling acotado.
+// Nunca imprime el token, la URL ni el cuerpo del correo.
+async function readEmailToken(api: APIRequestContext, email: string): Promise<string> {
+  let messageId = "";
+  await expect
+    .poll(
+      async () => {
+        const response = await api.get(`${mailpitBase}/api/v1/messages`);
+        if (!response.ok()) return false;
+        const data = await response.json();
+        const match = (data.messages ?? []).find(
+          (message: { ID?: string; To?: { Address?: string }[] }) =>
+            (message.To ?? []).some(
+              (recipient) => recipient.Address?.toLowerCase() === email.toLowerCase(),
+            ),
+        ) as { ID?: string } | undefined;
+        if (match?.ID) {
+          messageId = match.ID;
+          return true;
+        }
+        return false;
+      },
+      { timeout: 20000 },
+    )
+    .toBe(true);
+
+  const message = await (await api.get(`${mailpitBase}/api/v1/message/${messageId}`)).json();
+  const token = String(message.Text ?? "").match(/es:\s*([A-Za-z0-9_-]{20,})/)?.[1];
+  if (!token) {
+    throw new Error("No se recibió el correo esperado dentro del tiempo permitido.");
+  }
+  return token;
+}
+
 // Abre una acción de fila (editar o editor relacional) navegando primero al listado.
 async function openRowAction(
   page: Page,
@@ -118,6 +169,10 @@ async function createUserViaForm(
   await page.getByRole("button", { name: "Crear" }).click();
   await expect(page).toHaveURL(/\/resources\/users$/);
 }
+
+// Este spec maneja tokens reales de registro/recuperación (Mailpit). Se desactivan
+// los artifacts para que ningún token aparezca en trace, screenshot o video.
+test.use({ screenshot: "off", trace: "off", video: "off" });
 
 test.describe.serial("fresh install bootstrap and admin relations", () => {
   test("bootstrap, generic create, relation editing, session invalidation and admin survival", async ({
@@ -538,19 +593,95 @@ test.describe.serial("fresh install bootstrap and admin relations", () => {
       await expect(page).toHaveURL(/\/login$/);
     });
 
-    await test.step("Registro deshabilitado: sin enlace y ruta forzada rechazada", async () => {
+    await test.step("Registro habilitado: enlace visible y alta completa por correo", async () => {
       await page.goto("/login");
-      // Política: registro deshabilitado → el frontend no muestra "Crear cuenta".
-      await expect(page.getByRole("link", { name: "Crear cuenta" })).toHaveCount(0);
-      // El backend rechaza aunque se fuerce la ruta.
-      const forced = await request.post("/api/v1/auth/register/request", {
-        data: { email: "forzado@example.com" },
-      });
-      expect(forced.status()).toBe(403);
-      expect((await forced.json()).code).toBe("registration_disabled");
+      await page.getByRole("link", { name: "Crear cuenta" }).click();
+      await expect(page).toHaveURL(/\/register$/);
+      await page.getByLabel("Email").fill(newUserEmail);
+      await page.getByRole("button", { name: "Enviar token de registro" }).click();
+      await expect(page.getByText(/te enviamos un token/i)).toBeVisible();
+
+      const token = await readEmailToken(request, newUserEmail);
+
+      await page.goto("/register/complete");
+      await page.getByLabel("Nombre").fill("Registro");
+      await page.getByLabel("Apellido").fill("Externo");
+      await page.getByLabel("Email").fill(newUserEmail);
+      await page.getByLabel("Token de registro").fill(token);
+      await page.getByLabel("Contraseña", { exact: true }).fill(newUserPassword);
+      await page.getByLabel("Confirmar contraseña").fill(newUserPassword);
+      await page.getByRole("button", { name: "Crear cuenta" }).click();
+      await expect(page).toHaveURL(/\/login$/);
+
+      // Usuario creado y activo, pero SIN roles (el frontend no asigna acceso).
+      expect(queryScalar(`select is_active from "user" where email = '${newUserEmail}';`)).toBe("t");
+      expect(
+        queryScalar(
+          `select count(*) from user_role ur join "user" u on u.id = ur.user_id where u.email = '${newUserEmail}';`,
+        ),
+      ).toBe("0");
+
+      // Inicia sesión, pero sin permisos no ve módulos administrativos.
+      await login(page, newUserEmail, newUserPassword);
+      await expect(page).toHaveURL(/\/$/);
+      await expect(page.getByRole("link", { name: "Usuarios" })).toHaveCount(0);
+      await expect(page.getByRole("link", { name: "Roles" })).toHaveCount(0);
+
+      await page.getByRole("button", { name: "Cerrar sesión" }).click();
+      await expect(page).toHaveURL(/\/login$/);
     });
 
-    await test.step("Forgot password: respuesta indistinguible y rate limit", async () => {
+    await test.step("Reset de contraseña por correo: invalida sesión previa y token un solo uso", async () => {
+      const oldContext: BrowserContext = await context.browser()!.newContext({ baseURL: appBaseUrl });
+      const oldPage = await oldContext.newPage();
+      await login(oldPage, actionUserEmail, actionUserPassword);
+      await expect(oldPage).toHaveURL(/\/$/);
+
+      const forgot = await request.post("/api/v1/auth/password/forgot", {
+        data: { email: actionUserEmail },
+      });
+      expect(forgot.status()).toBe(202);
+      const token = await readEmailToken(request, actionUserEmail);
+
+      await page.goto("/reset-password");
+      await page.getByLabel("Email").fill(actionUserEmail);
+      await page.getByLabel("Token de recuperación").fill(token);
+      await page.getByLabel("Nueva contraseña").fill(resetNewPassword);
+      await page.getByLabel("Confirmar contraseña").fill(resetNewPassword);
+      await page.getByRole("button", { name: "Actualizar contraseña" }).click();
+      await expect(page).toHaveURL(/\/login$/);
+
+      // La contraseña anterior falla; la nueva funciona.
+      await login(page, actionUserEmail, actionUserPassword);
+      await expect(page).toHaveURL(/\/login$/);
+      await login(page, actionUserEmail, resetNewPassword);
+      await expect(page).toHaveURL(/\/$/);
+
+      // La sesión previa quedó invalidada.
+      await oldPage.goto("/");
+      await expect(oldPage).toHaveURL(/\/login$/);
+      await oldContext.close();
+
+      // El token de reset es de un solo uso.
+      const reuse = await request.post("/api/v1/auth/password/reset", {
+        data: {
+          email: actionUserEmail,
+          token,
+          password: "Reuse-password-789",
+          confirm_password: "Reuse-password-789",
+        },
+      });
+      expect(reuse.status()).toBe(400);
+
+      await page.goto("/");
+      await page.getByRole("button", { name: "Cerrar sesión" }).click();
+      await expect(page).toHaveURL(/\/login$/);
+    });
+
+    await test.step("Forgot password: respuesta indistinguible y rate limit determinista", async () => {
+      // Aísla el bucket de los forgot previos limpiando solo las keys de rate limit.
+      clearRateLimitKeys();
+
       // Respuesta idéntica exista o no la cuenta (anti-enumeración).
       const existing = await request.post("/api/v1/auth/password/forgot", {
         data: { email: adminEmail },
