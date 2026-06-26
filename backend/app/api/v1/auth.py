@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Response, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
 
 from backend.app.auth.auth import authenticate, delete_session_cookie, set_session_cookie
 from backend.app.auth.auth_dependencies import CurrentUser
@@ -16,6 +16,13 @@ from backend.app.schemas.auth import (
     UnlockAccountRequest,
 )
 from backend.app.schemas.user import SessionUser
+from backend.app.security.rate_limit import (
+    limit_forgot_password,
+    limit_login,
+    limit_register_complete,
+    limit_register_request,
+    limit_reset_password,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -28,9 +35,11 @@ def read_current_user(current_user: CurrentUser) -> SessionUser:
 @router.post("/login", response_model=MessageResponse)
 async def login(
     payload: LoginRequest,
+    request: Request,
     response: Response,
     session: SessionDep,
 ) -> MessageResponse:
+    limit_login(request, str(payload.email))
     token = await authenticate(session, payload.email, payload.password)
     if token is None:
         raise HTTPException(
@@ -55,8 +64,10 @@ def logout(response: Response, _: CurrentUser) -> MessageResponse:
 @router.post("/register/request", response_model=MessageResponse, status_code=status.HTTP_202_ACCEPTED)
 async def request_registration(
     payload: RegisterRequest,
+    request: Request,
     session: SessionDep,
 ) -> MessageResponse:
+    limit_register_request(request, str(payload.email))
     await send_registration_token(session, payload.email)
     return MessageResponse(message="Si el email es válido, se enviará un token de registro")
 
@@ -64,8 +75,10 @@ async def request_registration(
 @router.post("/register/complete", response_model=MessageResponse, status_code=status.HTTP_201_CREATED)
 def complete_registration(
     payload: RegisterCompleteRequest,
+    request: Request,
     session: SessionDep,
 ) -> MessageResponse:
+    limit_register_complete(request)
     user = create_user(session, payload)
     if user is None:
         raise HTTPException(
@@ -92,8 +105,10 @@ def unlock_account(
 @router.post("/password/forgot", response_model=MessageResponse, status_code=status.HTTP_202_ACCEPTED)
 async def request_password_reset(
     payload: ForgotPasswordRequest,
+    request: Request,
     session: SessionDep,
 ) -> MessageResponse:
+    limit_forgot_password(request, str(payload.email))
     await send_password_reset_token(session, payload.email)
     return MessageResponse(message="Si el email es válido, se enviará un token de recuperación")
 
@@ -101,8 +116,10 @@ async def request_password_reset(
 @router.post("/password/reset", response_model=MessageResponse)
 def complete_password_reset(
     payload: ResetPasswordRequest,
+    request: Request,
     session: SessionDep,
 ) -> MessageResponse:
+    limit_reset_password(request, payload.token)
     user = reset_password(session, payload.email, payload.token, payload.password)
     if user is None:
         raise HTTPException(

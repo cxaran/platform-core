@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Header, Response, status
+from fastapi import APIRouter, Header, Request, Response, status
 from sqlalchemy.exc import IntegrityError
 
 from backend.app.api.resource_actions import api_error
@@ -29,6 +29,7 @@ from backend.app.schemas.bootstrap import (
     BootstrapStatusRead,
 )
 from backend.app.security.catalog import SECURITY_GROUPS
+from backend.app.security.rate_limit import limit_bootstrap_initialize
 
 router = APIRouter(prefix="/bootstrap", tags=["bootstrap"])
 
@@ -78,11 +79,13 @@ def read_bootstrap_catalog(
 )
 def initialize_bootstrap(
     payload: BootstrapInitializeRequest,
+    request: Request,
     response: Response,
     session: SessionDep,
     bootstrap_token: str | None = Header(default=None, alias=BOOTSTRAP_TOKEN_HEADER),
 ) -> BootstrapInitializeRead:
     _no_store(response)
+    limit_bootstrap_initialize(request)
     require_bootstrap_token(settings.bootstrap_setup_token, bootstrap_token)
     try:
         initialize_platform(session, _payload_to_input(payload))

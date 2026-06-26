@@ -51,6 +51,23 @@ class Settings(BaseSettings):
     redis_port: int
     redis_db: int
 
+    # Rate limiting de rutas públicas de auth (ver security/rate_limit.py). Buckets
+    # como "limit/window_seconds"; configurables por ambiente. ``fail_open`` solo se
+    # respeta fuera de producción. ``trusted_proxies`` es CSV de IPs de proxy.
+    rate_limit_enabled: bool = True
+    rate_limit_fail_open: bool = False
+    rate_limit_trusted_proxies: str = ""
+    rate_limit_login_ip: str = "10/900"
+    rate_limit_login_identity: str = "5/900"
+    rate_limit_register_request_ip: str = "5/3600"
+    rate_limit_register_request_identity: str = "3/3600"
+    rate_limit_register_complete_ip: str = "10/900"
+    rate_limit_forgot_ip: str = "5/3600"
+    rate_limit_forgot_identity: str = "3/3600"
+    rate_limit_reset_ip: str = "10/900"
+    rate_limit_reset_token: str = "5/900"
+    rate_limit_bootstrap_ip: str = "5/900"
+
     postgres_user: str
     postgres_password: str
     postgres_server: str

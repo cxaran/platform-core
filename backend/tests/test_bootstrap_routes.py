@@ -38,7 +38,7 @@ os.environ.update(DEV_ENV)
 
 from backend.app.api.v1 import bootstrap as bootstrap_router  # noqa: E402
 from backend.app.core.database import get_db  # noqa: E402
-from backend.app.core.settings import Settings  # noqa: E402
+from backend.app.core.settings import Settings, settings  # noqa: E402
 from backend.app.main import app  # noqa: E402
 from backend.app.models import Base  # noqa: E402
 from backend.app.models.setup import PlatformSetup  # noqa: E402
@@ -89,10 +89,15 @@ class BootstrapRoutesTest(unittest.TestCase):
         self.client = TestClient(app)
         self.previous_settings = bootstrap_router.settings
         bootstrap_router.settings = SimpleNamespace(bootstrap_setup_token=None)
+        # El rate limiting requiere Redis; aquí se prueba la lógica de Bootstrap. Se
+        # desactiva sobre el singleton (el env por módulo no aplica por el cache).
+        self._previous_rate_limit = settings.rate_limit_enabled
+        settings.rate_limit_enabled = False
 
     def tearDown(self) -> None:
         app.dependency_overrides.clear()
         bootstrap_router.settings = self.previous_settings
+        settings.rate_limit_enabled = self._previous_rate_limit
 
     def _payload(self) -> dict[str, object]:
         return {
