@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
 
 import { ResourceListControls } from "@/components/resources/ResourceListControls";
 import { ResourcePagination } from "@/components/resources/ResourcePagination";
@@ -55,6 +56,16 @@ export default async function ResourcePage({ params, searchParams }: PageProps) 
 
   return (
     <div className="space-y-4">
+      {capability.forms?.create ? (
+        <div className="flex justify-end">
+          <Link
+            href={`${basePath}/new`}
+            className="rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+          >
+            Nuevo
+          </Link>
+        </div>
+      ) : null}
       <ResourceListControls
         resourceName={resourceName}
         search={list.search}
