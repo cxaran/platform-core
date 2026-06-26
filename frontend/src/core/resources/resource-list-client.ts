@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { ApiRequestError } from "@/core/api/api-error";
 import type { ResourceCapability } from "@/core/api/contracts";
 import { serverApi } from "@/core/api/server-client";
+import { buildListSearchParams, type ResourceListQuery } from "@/core/resources/list-query";
 import type { ResourceListPage, ResourceRow } from "@/core/resources/list-types";
 
 class InvalidListResponseError extends Error {
@@ -15,26 +16,28 @@ class InvalidListResponseError extends Error {
   }
 }
 
-// Defensa: aunque ``api_path`` viene del backend, solo se acepta un path interno
-// relativo bajo /api/. Cualquier otra cosa (URL absoluta, protocol-relative, host)
-// se rechaza sin intentar corregirla.
+// Defensa: ``api_path`` viene del backend, pero solo se acepta un path interno
+// relativo bajo /api/, sin host, query ni fragmento. Cualquier otra cosa se rechaza
+// sin intentar corregirla.
 function assertInternalApiPath(path: string): void {
   if (
     typeof path !== "string" ||
     !path.startsWith("/api/") ||
     path.startsWith("//") ||
-    /^[a-z][a-z0-9+.-]*:/i.test(path)
+    path.includes("://") ||
+    path.includes("?") ||
+    path.includes("#")
   ) {
     throw new InvalidListResponseError();
   }
 }
 
-function isFiniteNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
-}
-
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
 
 function parseListPage(raw: unknown): ResourceListPage {
@@ -48,9 +51,10 @@ function parseListPage(raw: unknown): ResourceListPage {
   }
 
   if (
-    !isFiniteNumber(pagination.limit) ||
-    !isFiniteNumber(pagination.offset) ||
-    !isFiniteNumber(pagination.total) ||
+    !Number.isInteger(pagination.limit) ||
+    (pagination.limit as number) < 1 ||
+    !isNonNegativeInteger(pagination.offset) ||
+    !isNonNegativeInteger(pagination.total) ||
     typeof pagination.has_next !== "boolean"
   ) {
     throw new InvalidListResponseError();
@@ -67,7 +71,7 @@ function parseListPage(raw: unknown): ResourceListPage {
   return {
     items: rows,
     pagination: {
-      limit: pagination.limit,
+      limit: pagination.limit as number,
       offset: pagination.offset,
       total: pagination.total,
       has_next: pagination.has_next,
@@ -76,26 +80,26 @@ function parseListPage(raw: unknown): ResourceListPage {
 }
 
 /**
- * Primera página de un recurso ``view: "table"``, resuelta en servidor.
- *
- * Pide ``GET capability.api_path`` sin query params (filtros/sort/paginación llegan
- * en Commit 6). 401 → ``/login``; 403 (pérdida de acceso tras obtener capability) →
- * ``null`` para que la página responda ``notFound()`` sin filtrar contenido; 5xx/red
- * y respuestas inválidas se propagan a la error boundary.
+ * Página de un recurso ``view: "table"`` para un query state ya validado, resuelta
+ * en servidor. 401 → ``/login``; 403 → ``null`` (la página responde ``notFound()``);
+ * 5xx/red/respuesta inválida → error boundary. Los query params se reconstruyen solo
+ * desde el estado validado (allowlist), nunca desde el ``searchParams`` crudo.
  */
 export async function getResourceListPage(
   capability: ResourceCapability,
+  query: ResourceListQuery,
 ): Promise<ResourceListPage | null> {
   if (capability.view !== "table" || !capability.list) {
     return null;
   }
 
   assertInternalApiPath(capability.api_path);
+  const url = `${capability.api_path}?${buildListSearchParams(query).toString()}`;
   const cookie = (await cookies()).toString();
 
   let raw: unknown;
   try {
-    raw = await serverApi<unknown>(capability.api_path, { cookie });
+    raw = await serverApi<unknown>(url, { cookie });
   } catch (error) {
     if (error instanceof ApiRequestError) {
       if (error.status === 401) {
