@@ -103,6 +103,7 @@ export default async function ResourcePage({ params, searchParams }: PageProps) 
         buildSortHref={(fieldName) => buildSortHref(basePath, query, controls, fieldName)}
         resourceName={resourceName}
         relations={capability.relations ?? []}
+        actions={capability.actions ?? []}
         itemReference={capability.item_reference ?? null}
         editEnabled={Boolean(
           capability.item_reference && capability.detail && capability.forms?.update,
