@@ -61,6 +61,31 @@ export function RelationEditor({
     });
   }
 
+  function selectedCountIn(group: RelationOptionGroup): number {
+    return group.options.reduce((total, option) => total + (selected.has(option.value) ? 1 : 0), 0);
+  }
+
+  function allSelectedIn(group: RelationOptionGroup): boolean {
+    return group.options.length > 0 && group.options.every((option) => selected.has(option.value));
+  }
+
+  // Selección/limpieza en bloque de un grupo: agiliza el catálogo agrupado de permisos
+  // (muchas casillas por grupo) sin tocar la selección de los demás grupos.
+  function toggleGroup(group: RelationOptionGroup): void {
+    const selectAll = !allSelectedIn(group);
+    setSelected((current) => {
+      const next = new Set(current);
+      for (const option of group.options) {
+        if (selectAll) {
+          next.add(option.value);
+        } else {
+          next.delete(option.value);
+        }
+      }
+      return next;
+    });
+  }
+
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pending) return;
@@ -118,8 +143,24 @@ export function RelationEditor({
         <div className="space-y-5">
           {groups.map((group) => (
             <fieldset key={group.name} className="space-y-2">
-              <legend className="text-sm font-semibold text-slate-700">
-                {group.label ?? title}
+              <legend className="mb-1 flex w-full items-center gap-3 text-sm font-semibold text-slate-700">
+                <span>{group.label ?? title}</span>
+                <span className="text-xs font-normal text-slate-500">
+                  {selectedCountIn(group)}/{group.options.length}
+                </span>
+                {group.options.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(group)}
+                    disabled={pending}
+                    aria-label={`${
+                      allSelectedIn(group) ? "Quitar" : "Seleccionar"
+                    } todo en ${group.label ?? title}`}
+                    className="text-xs font-medium text-slate-600 underline-offset-2 hover:text-slate-900 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {allSelectedIn(group) ? "Quitar todo" : "Seleccionar todo"}
+                  </button>
+                ) : null}
               </legend>
               <div className="space-y-1.5">
                 {group.options.map((option) => (
