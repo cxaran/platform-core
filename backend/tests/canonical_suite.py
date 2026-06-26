@@ -20,6 +20,7 @@ BACKEND_CANONICAL_TEST_MODULES = (
     "backend.tests.test_capability_config_errors",
     "backend.tests.test_csrf_origin",
     "backend.tests.test_health_routes",
+    "backend.tests.test_platform_setup",
     "backend.tests.test_bootstrap",
     "backend.tests.test_forgot_password",
 )

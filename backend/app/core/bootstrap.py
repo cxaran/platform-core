@@ -3,6 +3,7 @@ from sqlmodel import Session, select
 from backend.app.auth.security import generate_token, get_password_hash
 from backend.app.core.database import engine
 from backend.app.core.settings import settings
+from backend.app.bootstrap.service import mark_platform_setup_completed_from_seed
 from backend.app.models.user import Role, RoleAccess, User, UserRole
 from backend.app.security.catalog import declared_permissions
 
@@ -89,6 +90,11 @@ def bootstrap_initial_data() -> None:
 
         admin_user = _get_or_create_admin_user(session)
         _ensure_user_role(session, user=admin_user, role=admin_role)
+        mark_platform_setup_completed_from_seed(
+            session,
+            system_admin_role_id=admin_role.id,
+            completed_by_user_id=admin_user.id,
+        )
 
         session.commit()
 

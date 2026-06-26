@@ -36,6 +36,7 @@ os.environ.update(DEV_ENV)
 
 from backend.app.core import bootstrap  # noqa: E402
 from backend.app.models import Base  # noqa: E402
+from backend.app.models.setup import PlatformSetup  # noqa: E402
 from backend.app.models.user import Role, RoleAccess, User, UserRole  # noqa: E402
 from backend.app.security.catalog import declared_permissions  # noqa: E402
 
@@ -70,6 +71,7 @@ class BootstrapInitialDataTest(unittest.TestCase):
             roles = session.exec(select(Role)).all()
             user_roles = session.exec(select(UserRole)).all()
             accesses = session.exec(select(RoleAccess)).all()
+            setup = session.get(PlatformSetup, 1)
 
         self.assertEqual(len(users), 1)
         self.assertEqual(users[0].email, "admin@example.com")
@@ -80,6 +82,10 @@ class BootstrapInitialDataTest(unittest.TestCase):
         self.assertEqual(len(accesses), len(permissions))
         self.assertEqual({access.access for access in accesses}, permissions)
         self.assertTrue(all(access.is_active for access in accesses))
+        self.assertIsNotNone(setup)
+        self.assertEqual(setup.status, "completed")
+        self.assertEqual(setup.completion_origin, "legacy")
+        self.assertIsNotNone(setup.system_admin_role_id)
 
 
 if __name__ == "__main__":
