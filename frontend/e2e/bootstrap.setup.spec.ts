@@ -593,6 +593,67 @@ test.describe.serial("fresh install bootstrap and admin relations", () => {
       await expect(userRow(page, adminEmail)).toHaveCount(0);
     });
 
+    await test.step("Editar rol: navegar al editor de permisos desde el flujo de edición", async () => {
+      await openRowAction(page, "/resources/roles", updatedRoleName, "Editar");
+      await expect(page).toHaveURL(/\/edit$/);
+      // Navegación al editor relacional publicada en la edición (relaciones por permiso).
+      await page
+        .getByRole("navigation", { name: "Relaciones" })
+        .getByRole("link", { name: "Editar Permisos" })
+        .click();
+      await expect(page).toHaveURL(/\/permissions$/);
+      await expect(page.getByRole("heading", { name: "Permisos", exact: true })).toBeVisible();
+    });
+
+    await test.step("Editor agrupado: 'Seleccionar todo' asigna el grupo y persiste", async () => {
+      await openRowAction(page, "/resources/roles", updatedRoleName, "Editar");
+      await page
+        .getByRole("navigation", { name: "Relaciones" })
+        .getByRole("link", { name: "Editar Permisos" })
+        .click();
+      await expect(page).toHaveURL(/\/permissions$/);
+
+      const listarUsuarios = page.getByRole("checkbox", { name: "Listar usuarios" });
+      await expect(listarUsuarios).not.toBeChecked();
+      // Control en bloque por grupo (UX agrupada): marca todo el grupo Usuarios.
+      await page.getByRole("button", { name: "Seleccionar todo en Usuarios" }).click();
+      await expect(listarUsuarios).toBeChecked();
+
+      await page.getByRole("button", { name: "Guardar" }).click();
+      await expect(page).toHaveURL(/\/resources\/roles$/);
+
+      expect(
+        queryScalar(
+          `select count(*) from role_access ra join role r on r.id = ra.role_id
+           where r.name = '${updatedRoleName}' and ra.access = 'users:read' and ra.is_active = true;`,
+        ),
+      ).toBe("1");
+    });
+
+    await test.step("Editor agrupado: 'Quitar todo' limpia el grupo y persiste", async () => {
+      await openRowAction(page, "/resources/roles", updatedRoleName, "Editar");
+      await page
+        .getByRole("navigation", { name: "Relaciones" })
+        .getByRole("link", { name: "Editar Permisos" })
+        .click();
+      await expect(page).toHaveURL(/\/permissions$/);
+
+      const listarUsuarios = page.getByRole("checkbox", { name: "Listar usuarios" });
+      await expect(listarUsuarios).toBeChecked();
+      await page.getByRole("button", { name: "Quitar todo en Usuarios" }).click();
+      await expect(listarUsuarios).not.toBeChecked();
+
+      await page.getByRole("button", { name: "Guardar" }).click();
+      await expect(page).toHaveURL(/\/resources\/roles$/);
+
+      expect(
+        queryScalar(
+          `select count(*) from role_access ra join role r on r.id = ra.role_id
+           where r.name = '${updatedRoleName}' and ra.access = 'users:read' and ra.is_active = true;`,
+        ),
+      ).toBe("0");
+    });
+
     await test.step("Eliminar rol normal con confirmación", async () => {
       await page.goto("/resources/roles");
       await page.getByRole("link", { name: "Nuevo" }).click();
