@@ -273,7 +273,9 @@ class QueryHelperFactoryTest(unittest.TestCase):
             name: str
 
         error_cases: list[tuple[str, str]] = [
-            ("missing", "invalid_schema_column_mapping"),
+            # Campo inexistente en el contrato público: error de CONFIGURACIÓN del
+            # sort (la causa raíz), no un fallo de mapeo de columna.
+            ("missing", "invalid_default_sort"),
             ("name,name", "invalid_default_sort"),
             ("name,,id", "invalid_default_sort"),
             ("-", "invalid_default_sort"),
@@ -288,16 +290,19 @@ class QueryHelperFactoryTest(unittest.TestCase):
                         options=QueryOptions(default_sort=default_sort),
                     )
 
-    def test_factory_requires_default_sort_when_primary_key_is_not_public(self) -> None:
+    def test_default_sort_derives_from_pk_even_when_pk_is_not_public(self) -> None:
+        # La PK vive en el conjunto orderable interno aunque no esté en el schema
+        # público: el default del servidor deriva de ella y el orden es estable,
+        # sin exigir configurar default_sort.
         class NoStableDefaultRead(BaseModel):
             name: str
 
-        with self.assertRaisesRegex(QuerySchemaConfigError, "missing_default_sort"):
-            make_offset_query_schema(
-                name="NoStableDefaultQuery",
-                resource_schema=NoStableDefaultRead,
-                orm_model=QueryThing,
-            )
+        query_schema = make_offset_query_schema(
+            name="NoStableDefaultQuery",
+            resource_schema=NoStableDefaultRead,
+            orm_model=QueryThing,
+        )
+        self.assertEqual(query_schema.model_fields["sort"].default, "id")
 
     def test_factory_generates_in_and_isnull_filters(self) -> None:
         query_schema = make_offset_query_schema(
@@ -467,6 +472,8 @@ class QueryExecutorTest(unittest.TestCase):
             name="PageThingQuery",
             resource_schema=PageThingRead,
             orm_model=PageThing,
+            # La PK ya no es ordenable pública por defecto: se declara.
+            options=QueryOptions(sort_fields=("id",)),
         )
 
         page = paginate(

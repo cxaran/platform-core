@@ -46,16 +46,35 @@ def _order_by(sql: str) -> str:
 
 
 class LegacyVsNativePkTest(unittest.TestCase):
-    """Misma config de fields; la PK no está en sort_fields. Legacy la deja
-    solicitable; nativo la trata como interna."""
+    """Misma config de fields; la PK no está en sort_fields. Ambos caminos la
+    tratan como INTERNA (tie-breaker): ya no es solicitable sin declararla."""
 
     OPTIONS = QueryOptions(filter_fields=("name",), sort_fields=("name",), default_sort="name")
 
-    def test_legacy_options_allows_sorting_by_pk(self) -> None:
+    def test_legacy_options_treats_pk_as_internal(self) -> None:
         contract = ListQueryContract(
             name="LegacyPk", model=Widget, schema=WidgetRead, options=self.OPTIONS
         )
-        # id no está en sort_fields pero el camino legacy lo añade al público.
+        # id no está en sort_fields: el camino legacy YA NO lo publica (deuda 2).
+        with self.assertRaises(QueryParameterError):
+            apply_query_schema(
+                stmt=select(Widget), query=contract.Query(sort="id"), plan=contract.plan  # type: ignore[arg-type]
+            )
+        # ...pero sigue presente como tie-breaker al ordenar por un campo público.
+        stmt = apply_query_schema(
+            stmt=select(Widget), query=contract.Query(sort="name"), plan=contract.plan  # type: ignore[arg-type]
+        )
+        self.assertIn("WIDGET.ID", _order_by(_sql(stmt)))
+
+    def test_legacy_options_allows_pk_sort_when_declared(self) -> None:
+        contract = ListQueryContract(
+            name="LegacyPkDeclared",
+            model=Widget,
+            schema=WidgetRead,
+            options=QueryOptions(
+                filter_fields=("name",), sort_fields=("name", "id"), default_sort="name"
+            ),
+        )
         stmt = apply_query_schema(
             stmt=select(Widget), query=contract.Query(sort="id"), plan=contract.plan  # type: ignore[arg-type]
         )
@@ -74,6 +93,82 @@ class LegacyVsNativePkTest(unittest.TestCase):
             stmt=select(Widget), query=contract.Query(sort="name"), plan=contract.plan  # type: ignore[arg-type]
         )
         self.assertIn("WIDGET.ID", _order_by(_sql(stmt)))
+
+
+class SortFieldsTriStateTest(unittest.TestCase):
+    """Tri-estado de ``QueryOptions.sort_fields`` (deuda 1 de QUERY_DESIGN_DEBT.md):
+    None deriva de los consultables; () es estricto; una tupla es la allowlist."""
+
+    def test_none_derives_public_sort_from_queryable_fields(self) -> None:
+        contract = ListQueryContract(
+            name="TriNone",
+            model=Widget,
+            schema=WidgetRead,
+            options=QueryOptions(filter_fields=("name", "price"), default_sort="name"),
+        )
+        self.assertEqual(set(contract.plan.public_sort_columns), {"name", "price"})
+        stmt = apply_query_schema(
+            stmt=select(Widget), query=contract.Query(sort="price"), plan=contract.plan  # type: ignore[arg-type]
+        )
+        self.assertIn("WIDGET.PRICE", _order_by(_sql(stmt)))
+
+    def test_empty_tuple_is_strict_mode_without_public_sort(self) -> None:
+        contract = ListQueryContract(
+            name="TriStrict",
+            model=Widget,
+            schema=WidgetRead,
+            options=QueryOptions(filter_fields=("name",), sort_fields=(), default_sort="name"),
+        )
+        self.assertEqual(dict(contract.plan.public_sort_columns), {})
+        # Cualquier sort del cliente DISTINTO del default del servidor se rechaza
+        # (enviar exactamente el default es indistinguible de no enviar sort).
+        with self.assertRaises(QueryParameterError):
+            apply_query_schema(
+                stmt=select(Widget), query=contract.Query(sort="-name"), plan=contract.plan  # type: ignore[arg-type]
+            )
+        # ...pero el default del servidor sigue aplicando, con desempate por PK.
+        stmt = apply_query_schema(
+            stmt=select(Widget), query=contract.Query(), plan=contract.plan  # type: ignore[arg-type]
+        )
+        order_by = _order_by(_sql(stmt))
+        self.assertIn("WIDGET.NAME", order_by)
+        self.assertIn("WIDGET.ID", order_by)
+
+    def test_explicit_tuple_is_exact_allowlist(self) -> None:
+        contract = ListQueryContract(
+            name="TriAllow",
+            model=Widget,
+            schema=WidgetRead,
+            options=QueryOptions(
+                filter_fields=("name", "price"), sort_fields=("name",), default_sort="name"
+            ),
+        )
+        self.assertEqual(set(contract.plan.public_sort_columns), {"name"})
+        with self.assertRaises(QueryParameterError):
+            apply_query_schema(
+                stmt=select(Widget), query=contract.Query(sort="price"), plan=contract.plan  # type: ignore[arg-type]
+            )
+
+    def test_public_string_params_strip_surrounding_whitespace(self) -> None:
+        # Política confirmada (deuda 4): el espacio periférico es ruido del cliente
+        # en TODOS los parámetros string públicos (sort, q y filtros de texto).
+        contract = ListQueryContract(
+            name="TriStrip",
+            model=Widget,
+            schema=WidgetRead,
+            options=QueryOptions(
+                filter_fields=("name",),
+                search_fields=("name",),
+                sort_fields=("name",),
+                default_sort="name",
+            ),
+        )
+        query = contract.Query(sort=" -name ", q="  admin  ", name=" Ana ")  # type: ignore[call-arg]
+        self.assertEqual(query.sort, "-name")
+        self.assertEqual(query.q, "admin")  # type: ignore[attr-defined]
+        self.assertEqual(query.name, "Ana")  # type: ignore[attr-defined]
+        stmt = apply_query_schema(stmt=select(Widget), query=query, plan=contract.plan)
+        self.assertIn("WIDGET.NAME DESC", _order_by(_sql(stmt)))
 
 
 class OrderableDefaultTest(unittest.TestCase):

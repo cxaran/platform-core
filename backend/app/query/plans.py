@@ -184,12 +184,15 @@ class CompiledQueryPlan:
     def from_schema(cls, query_type: type[Any]) -> CompiledQueryPlan:
         """Reconstruye el plan desde los ``__query_*__`` del schema (ruta heredada).
 
-        En la ruta heredada ``__query_sort_columns__`` es a la vez público y
-        orderable (semántica legacy: la PK añadida es solicitable), y los
-        tie-breakers son la primary key por su clave de columna.
+        ``__query_sort_columns__`` es el conjunto PÚBLICO; el orderable del default
+        del servidor es ese conjunto más la primary key (que ya no se publica sola)
+        y los tie-breakers son la primary key por su clave de columna.
         """
         sort_columns = query_type.__query_sort_columns__
         primary_keys = tuple(query_type.__query_primary_keys__)
+        orderable_columns = dict(sort_columns)
+        for primary_key in primary_keys:
+            orderable_columns.setdefault(primary_key.key, primary_key)
         # Reconstruye el mapping público con el mismo helper canónico que la factory,
         # validando contra las model_fields reales (no por concatenación manual).
         filter_parameters = build_filter_parameters(
@@ -209,7 +212,7 @@ class CompiledQueryPlan:
             in_fields=frozenset(query_type.__query_in_fields__),
             null_filter_fields=frozenset(query_type.__query_null_filter_fields__),
             public_sort_columns=sort_columns,
-            orderable_columns=sort_columns,
+            orderable_columns=orderable_columns,
             tie_breakers=tuple((primary_key.key, primary_key) for primary_key in primary_keys),
             default_order=query_type.model_fields["sort"].default,
             identity=IdentitySpec(columns=primary_keys),

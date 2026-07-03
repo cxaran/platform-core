@@ -23,7 +23,14 @@ def _empty_field_operators() -> dict[str, tuple[Operator, ...]]:
 @dataclass(frozen=True, slots=True)
 class QueryOptions:
     filter_fields: tuple[str, ...] = ()
-    sort_fields: tuple[str, ...] = ()
+    # Tri-estado del sort PÚBLICO (deuda 1 de QUERY_DESIGN_DEBT.md):
+    #   None (default)      -> modo derivado: el cliente puede ordenar por todos los
+    #                          campos consultables declarados en las demás listas.
+    #   ()                  -> modo estricto: sin campos de sort públicos (el
+    #                          desempate interno por PK sigue activo).
+    #   ("created_at", ...) -> allowlist explícita. La PK ya NO se añade sola al
+    #                          conjunto público: sólo es ordenable si se declara.
+    sort_fields: tuple[str, ...] | None = None
     search_fields: tuple[str, ...] = ()
     in_fields: tuple[str, ...] = ()
     null_filter_fields: tuple[str, ...] = ()

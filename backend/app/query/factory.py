@@ -105,7 +105,20 @@ def compile_list_query(
         all_columns[field_name] = _resolve_column(orm_model, field_name, query_options)
         field_types[field_name] = field_type
 
+    # default_sort se valida ANTES de resolver columnas: un campo que no existe en el
+    # contrato público es un error de CONFIGURACIÓN del sort (invalid_default_sort),
+    # no un fallo de mapeo de columna. La PK se admite aunque no esté en el schema
+    # (es el desempate estable y el default derivado cuando no se configura orden).
+    primary_key_names = _primary_key_names(primary_keys)
     for field_name in _default_sort_fields(query_options):
+        if (
+            field_name not in resource_schema.model_fields
+            and field_name not in primary_key_names
+        ):
+            _fail(
+                "invalid_default_sort",
+                f"No se permite ordenar por '{field_name}' en default_sort.",
+            )
         if field_name not in all_columns:
             all_columns[field_name] = _resolve_column(orm_model, field_name, query_options)
 
@@ -121,15 +134,24 @@ def compile_list_query(
             field_definitions[f"{field_name}_lte"] = (field_type | None, None)
             range_fields.add(field_name)
 
-    if query_options.sort_fields:
+    # Sort PÚBLICO tri-estado: None deriva de los campos consultables; () es modo
+    # estricto (sin sort de cliente); una tupla es la allowlist exacta. La PK ya NO
+    # se añade sola al conjunto público (era la deuda 2): vive en los tie-breakers
+    # y en el conjunto orderable del default del servidor.
+    if query_options.sort_fields is None:
+        sort_columns.update(all_columns)
+    else:
         for field_name in query_options.sort_fields:
             sort_columns[field_name] = all_columns[field_name]
-    else:
-        sort_columns.update(all_columns)
 
-    for pk_name in _primary_key_names(primary_keys):
-        if pk_name not in sort_columns and pk_name in resource_schema.model_fields:
-            sort_columns[pk_name] = getattr(orm_model, pk_name)
+    # Orderable: superconjunto que default_sort puede usar (campos consultables + PK),
+    # igual que la ruta de QueryPolicy con orderable_fields=None.
+    orderable_columns: dict[str, ColumnElement[Any] | InstrumentedAttribute[Any]] = dict(
+        all_columns
+    )
+    for pk_name in primary_key_names:
+        if pk_name not in orderable_columns:
+            orderable_columns[pk_name] = getattr(orm_model, pk_name)
 
     in_fields = _register_in_filters(field_definitions, all_columns, field_types, query_options)
     null_filter_fields = _register_null_filters(field_definitions, all_columns, query_options)
@@ -154,7 +176,7 @@ def compile_list_query(
     if search_columns:
         field_definitions["q"] = (str | None, Field(default=None, min_length=2, max_length=100))
 
-    default_sort = _default_sort(query_options, sort_columns, primary_keys)
+    default_sort = _default_sort(query_options, orderable_columns, primary_keys)
     field_definitions["limit"] = (int, Field(default=20, ge=1, le=query_options.max_limit))
     field_definitions["sort"] = (
         str,
@@ -166,8 +188,6 @@ def compile_list_query(
         ),
     )
 
-    # Legacy: el conjunto público y el orderable coinciden con sort_columns (que ya
-    # incluye la PK si su nombre está en el schema). Preserva la PK solicitable.
     return _build_compiled(
         name=name,
         module=resource_schema.__module__,
@@ -179,7 +199,7 @@ def compile_list_query(
         in_fields=in_fields,
         null_filter_fields=null_filter_fields,
         public_sort_columns=sort_columns,
-        orderable_columns=sort_columns,
+        orderable_columns=orderable_columns,
         search_columns=search_columns,
         primary_keys=primary_keys,
         max_sort_terms=query_options.max_sort_terms,
@@ -567,7 +587,7 @@ def _requested_fields(options: QueryOptions) -> tuple[str, ...]:
     fields: list[str] = []
     for group in (
         options.filter_fields,
-        options.sort_fields,
+        options.sort_fields or (),
         options.search_fields,
         options.in_fields,
         options.null_filter_fields,

@@ -132,10 +132,15 @@ def policy_from_options(
             )
         )
 
+    # Tri-estado de sort_fields (ver QueryOptions): None deriva el sort público de
+    # los campos consultables; () es estricto; una tupla es la allowlist exacta.
+    public_sort_fields = (
+        requested if options.sort_fields is None else tuple(options.sort_fields)
+    )
     return QueryPolicy(
         fields=tuple(specs),
         sort=SortConfig(
-            public_sort_fields=tuple(options.sort_fields),
+            public_sort_fields=public_sort_fields,
             default_order=options.default_sort,
         ),
         search=SearchConfig(min_len=_SEARCH_MIN_LEN, max_len=_SEARCH_MAX_LEN),
