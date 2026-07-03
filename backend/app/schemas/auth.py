@@ -10,6 +10,8 @@ class AuthPolicyRead(ApiReadSchema):
 
     registration_enabled: bool
     password_reset_enabled: bool
+    # Botón "Continuar con Google" (efectivo: flag encendido Y credenciales completas).
+    google_login_enabled: bool = False
 
 
 class LoginRequest(ApiWriteSchema):

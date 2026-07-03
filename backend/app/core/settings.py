@@ -85,6 +85,7 @@ class Settings(BaseSettings):
     rate_limit_reset_token: str = "5/900"
     rate_limit_bootstrap_ip: str = "5/900"
     rate_limit_login_verify_ip: str = "10/900"
+    rate_limit_google_login_ip: str = "10/900"
 
     # Política pública de auth. Platform Core no asume signup público: el registro
     # está deshabilitado por defecto y debe habilitarse explícitamente.

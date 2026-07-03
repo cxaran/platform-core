@@ -126,6 +126,77 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/login/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify Login
+         * @description Canjea el secreto del reto (código o token del enlace) por la sesión.
+         *
+         *     Exige la cookie del reto del MISMO navegador que inició el login: un enlace
+         *     reenviado a otro dispositivo no crea sesión ahí. Consumo único y tope de
+         *     intentos por reto; el error es genérico (no distingue causa).
+         */
+        post: operations["verify_login_api_v1_auth_login_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/google/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Login Start
+         * @description Arranca el OAuth con Google: 302 a la pantalla de consentimiento.
+         *
+         *     404 genérico con la función deshabilitada (no revela si existe la política);
+         *     el state viaja hasheado en Redis con consumo único y TTL corto.
+         */
+        get: operations["google_login_start_api_v1_auth_google_start_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/google/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Login Callback
+         * @description Aterrizaje del OAuth: valida state+nonce+id_token y resuelve la cuenta.
+         *
+         *     Éxito → cookie de sesión y 302 al inicio (SIN pasar por la verificación de
+         *     login por correo: Google ya autenticó). Cualquier fallo → 302 a /login con
+         *     un marcador genérico; la causa real queda sólo en los logs.
+         */
+        get: operations["google_login_callback_api_v1_auth_google_callback_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/logout": {
         parameters: {
             query?: never;
@@ -1029,6 +1100,11 @@ export interface components {
             registration_enabled: boolean;
             /** Password Reset Enabled */
             password_reset_enabled: boolean;
+            /**
+             * Google Login Enabled
+             * @default false
+             */
+            google_login_enabled: boolean;
         };
         /**
          * BackupDriveStatus
@@ -1595,6 +1671,29 @@ export interface components {
              * Format: password
              */
             password: string;
+        };
+        /**
+         * LoginResponse
+         * @description Desenlace del login: sesión creada o reto de verificación por correo.
+         */
+        LoginResponse: {
+            /** Message */
+            message: string;
+            /**
+             * Verification Required
+             * @default false
+             */
+            verification_required: boolean;
+            /** Verification Mode */
+            verification_mode?: string | null;
+        };
+        /**
+         * LoginVerifyRequest
+         * @description Secreto del reto: el código de 6 dígitos o el token del enlace.
+         */
+        LoginVerifyRequest: {
+            /** Code */
+            code: string;
         };
         /** MessageResponse */
         MessageResponse: {
@@ -2218,6 +2317,14 @@ export interface components {
             app_base_url_verified_at?: string | null;
             /** Institution Name */
             institution_name?: string | null;
+            /** Login Verification Mode */
+            login_verification_mode: string;
+            /** Google Login Enabled */
+            google_login_enabled: boolean;
+            /** Google Auth Client Id */
+            google_auth_client_id?: string | null;
+            /** Google Auth Client Secret Configured */
+            google_auth_client_secret_configured: boolean;
             /** Password Reset Enabled */
             password_reset_enabled: boolean;
             /** Email Mode */
@@ -2276,6 +2383,11 @@ export interface components {
              */
             institution_name?: string | null;
             /**
+             * Verificación de inicio de sesión
+             * @description Segundo paso por correo en cada login: código de un solo uso o enlace. Requiere transporte de correo utilizable. Los administradores con cobertura completa quedan exentos siempre (garantía anti-bloqueo).
+             */
+            login_verification_mode?: ("disabled" | "code" | "link") | null;
+            /**
              * Recuperación de contraseña
              * @description Permitir restablecer contraseña por correo. AVISO: apagarla con el registro cerrado y un solo administrador puede dejar la instalación sin acceso (la salida es el seed del servidor).
              */
@@ -2302,6 +2414,18 @@ export interface components {
             email_smtp_tls?: boolean | null;
             /** SSL directo */
             email_smtp_ssl?: boolean | null;
+            /**
+             * Inicio de sesión con Google
+             * @description Muestra 'Continuar con Google' en el login. Requiere client ID y secret configurados. El alta de cuentas nuevas exige además el registro público habilitado.
+             */
+            google_login_enabled?: boolean | null;
+            /** Client ID de Google (login) */
+            google_auth_client_id?: string | null;
+            /**
+             * Client secret de Google (write-only)
+             * @description Se guarda cifrado; nunca vuelve a mostrarse.
+             */
+            google_auth_client_secret?: string | null;
             /**
              * Contraseña SMTP (write-only)
              * @description Se guarda cifrada; nunca vuelve a mostrarse.
@@ -2713,7 +2837,92 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MessageResponse"];
+                    "application/json": components["schemas"]["LoginResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_login_api_v1_auth_login_verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginVerifyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoginResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_login_start_api_v1_auth_google_start_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    google_login_callback_api_v1_auth_google_callback_get: {
+        parameters: {
+            query?: {
+                code?: string;
+                state?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

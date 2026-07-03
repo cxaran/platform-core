@@ -166,6 +166,7 @@ def _policies() -> dict[str, BucketPolicy]:
         "reset_token": parse_policy(settings.rate_limit_reset_token),
         "bootstrap_ip": parse_policy(settings.rate_limit_bootstrap_ip),
         "login_verify_ip": parse_policy(settings.rate_limit_login_verify_ip),
+        "google_login_ip": parse_policy(settings.rate_limit_google_login_ip),
     }
 
 
@@ -245,6 +246,10 @@ def limit_login(request: Request, email: str) -> None:
 
 def limit_login_verify(request: Request) -> None:
     enforce(request, ("login_verify_ip", client_ip(request)))
+
+
+def limit_google_login(request: Request) -> None:
+    enforce(request, ("google_login_ip", client_ip(request)))
 
 
 def limit_register_request(request: Request, email: str) -> None:

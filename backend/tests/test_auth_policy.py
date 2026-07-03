@@ -57,8 +57,15 @@ class AuthPolicyTest(unittest.TestCase):
             auth_router, "is_public_registration_enabled", return_value=False
         )
         self._registration.start()
+        # El flag de Google también resuelve contra system_settings: se parchea en
+        # SU módulo (el router lo importa de forma diferida).
+        self._google = patch(
+            "backend.app.auth.google_login.is_google_login_enabled", return_value=False
+        )
+        self._google.start()
 
     def tearDown(self) -> None:
+        self._google.stop()
         self._registration.stop()
         self._reset_policy.stop()
         for key, value in self._prev.items():
@@ -67,7 +74,12 @@ class AuthPolicyTest(unittest.TestCase):
     def test_policy_endpoint_publishes_only_two_booleans(self) -> None:
         body = self.client.get("/api/v1/auth/policy").json()
         self.assertEqual(
-            body, {"registration_enabled": False, "password_reset_enabled": True}
+            body,
+            {
+                "registration_enabled": False,
+                "password_reset_enabled": True,
+                "google_login_enabled": False,
+            },
         )
 
     def test_register_request_blocked_when_disabled(self) -> None:

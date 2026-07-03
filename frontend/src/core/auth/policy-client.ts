@@ -8,6 +8,7 @@ export type AuthPolicy = components["schemas"]["AuthPolicyRead"];
 const SAFE_DEFAULT: AuthPolicy = {
   registration_enabled: false,
   password_reset_enabled: false,
+  google_login_enabled: false,
 };
 
 /**

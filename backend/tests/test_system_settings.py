@@ -360,6 +360,37 @@ class SystemSettingsApiTest(unittest.TestCase):
         self.assertEqual(blocked.status_code, 409, blocked.text)
         self.assertIn("login_verification_requires_email", blocked.text)
 
+    def test_google_login_requires_credentials_and_secret_is_write_only(self) -> None:
+        sid = self._settings_id()
+        # Encender el switch sin credenciales sería un botón muerto: 409 con causa.
+        blocked = self.client.patch(
+            f"/api/v1/system-settings/{sid}", json={"google_login_enabled": True}
+        )
+        self.assertEqual(blocked.status_code, 409, blocked.text)
+        self.assertIn("google_login_requires_credentials", blocked.text)
+
+        with self._with_fernet_key():
+            ok = self.client.patch(
+                f"/api/v1/system-settings/{sid}",
+                json={
+                    "google_login_enabled": True,
+                    "google_auth_client_id": "client-id.apps.googleusercontent.com",
+                    "google_auth_client_secret": "super-secreto-google",
+                },
+            )
+            self.assertEqual(ok.status_code, 200, ok.text)
+            body = ok.json()
+            self.assertTrue(body["google_login_enabled"])
+            self.assertTrue(body["google_auth_client_secret_configured"])
+            # El secreto JAMÁS viaja de vuelta ni queda en claro en la fila.
+            self.assertNotIn("super-secreto-google", ok.text)
+            with Session(self.engine) as session:
+                row = session.exec(select(SystemSettings)).one()
+                assert row.google_auth_client_secret_ciphertext is not None
+                self.assertNotIn(
+                    "super-secreto-google", row.google_auth_client_secret_ciphertext
+                )
+
     def test_password_reset_policy_reads_database(self) -> None:
         sid = self._settings_id()
         policy = self.client.get("/api/v1/auth/policy").json()

@@ -130,8 +130,32 @@ class SystemSettingsUpdate(ApiPatchSchema):
         title="SSL directo",
         json_schema_extra={"ui": {"form": True, "widget": "switch"}},
     )
+    google_login_enabled: Optional[bool] = Field(
+        default=None,
+        title="Inicio de sesión con Google",
+        description=(
+            "Muestra 'Continuar con Google' en el login. Requiere client ID y "
+            "secret configurados. El alta de cuentas nuevas exige además el "
+            "registro público habilitado."
+        ),
+        json_schema_extra={"ui": {"form": True, "widget": "switch"}},
+    )
+    google_auth_client_id: Optional[str] = Field(
+        default=None,
+        min_length=1,
+        max_length=255,
+        title="Client ID de Google (login)",
+        json_schema_extra={"ui": {"form": True, "widget": "text"}},
+    )
     # Secretos WRITE-ONLY: enviar un valor lo reemplaza, enviar null lo borra,
     # omitirlo lo conserva. JAMÁS existen en el schema de lectura.
+    google_auth_client_secret: Optional[str] = Field(
+        default=None,
+        max_length=255,
+        title="Client secret de Google (write-only)",
+        description="Se guarda cifrado; nunca vuelve a mostrarse.",
+        json_schema_extra={"ui": {"form": True, "widget": "text"}},
+    )
     email_smtp_password: Optional[str] = Field(
         default=None,
         max_length=255,
@@ -161,6 +185,9 @@ class SystemSettingsRead(ApiReadSchema):
     app_base_url_verified_at: Optional[datetime] = None
     institution_name: Optional[str] = None
     login_verification_mode: str
+    google_login_enabled: bool
+    google_auth_client_id: Optional[str] = None
+    google_auth_client_secret_configured: bool
     password_reset_enabled: bool
     # Correo: estado SEGURO (metadata; los secretos jamás se proyectan).
     email_mode: str

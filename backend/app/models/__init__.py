@@ -4,6 +4,7 @@ from .base import Base
 from .setup import PlatformSetup
 from .system_settings import SystemSettings
 from .user import User, Role, UserRole, RoleAccess
+from .user_identity import UserIdentity
 
 __all__ = [
     "AuditEvent",
@@ -16,5 +17,6 @@ __all__ = [
     "RoleAccess",
     "SystemSettings",
     "User",
+    "UserIdentity",
     "UserRole",
 ]

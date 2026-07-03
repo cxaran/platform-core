@@ -50,6 +50,9 @@ def _serialize_read(session: SessionDep, row: SystemSettings) -> SystemSettingsR
         app_base_url_verified_at=row.app_base_url_verified_at,
         institution_name=row.institution_name,
         login_verification_mode=row.login_verification_mode,
+        google_login_enabled=row.google_login_enabled,
+        google_auth_client_id=row.google_auth_client_id,
+        google_auth_client_secret_configured=row.google_auth_client_secret_ciphertext is not None,
         password_reset_enabled=row.password_reset_enabled,
         email_mode=row.email_mode,
         email_from_address=row.email_from_address,
@@ -299,6 +302,23 @@ def update_system_settings(
                 f"Configura el correo saliente antes de activar la verificación: {reason}",
             )
 
+    # Activar el login con Google exige credenciales COMPLETAS (client ID en la
+    # fila o en este mismo PATCH, y secret ya guardado o entrante): un switch sin
+    # credenciales sería un botón muerto en el login.
+    if data.get("google_login_enabled") is True:
+        has_client_id = bool(data.get("google_auth_client_id") or row.google_auth_client_id)
+        has_secret = bool(
+            data.get("google_auth_client_secret")
+            or row.google_auth_client_secret_ciphertext
+        )
+        if not has_client_id or not has_secret:
+            api_error(
+                status.HTTP_409_CONFLICT,
+                "google_login_requires_credentials",
+                "Configura el client ID y el client secret de Google antes de "
+                "habilitar el inicio de sesión con Google.",
+            )
+
     # Secretos WRITE-ONLY: valor -> cifrar y reemplazar; null -> borrar; omitido ->
     # conservar. Nunca pasan por setattr (no existen como columnas en claro).
     from backend.app.services.secret_cipher import SecretCipherError, encrypt_secret
@@ -306,6 +326,7 @@ def update_system_settings(
     secret_targets = {
         "email_smtp_password": "email_smtp_password_ciphertext",
         "email_resend_api_key": "email_resend_api_key_ciphertext",
+        "google_auth_client_secret": "google_auth_client_secret_ciphertext",
     }
     try:
         for field, column in secret_targets.items():

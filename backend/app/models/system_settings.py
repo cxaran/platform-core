@@ -112,6 +112,28 @@ class SystemSettings(Base):
         ),
     )
 
+    # -- Login con Google (política editable; el secret SIEMPRE cifrado) -----------
+    google_login_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        comment=(
+            "Botón 'Continuar con Google' en el login. Vincula cuentas por correo "
+            "VERIFICADO de Google; el alta de cuentas nuevas exige además el "
+            "registro público efectivo (mismo doble candado que el registro)."
+        ),
+    )
+    google_auth_client_id: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        comment="Client ID del OAuth de Google para el LOGIN (distinto del de respaldos).",
+    )
+    google_auth_client_secret_ciphertext: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Client secret del OAuth de login CIFRADO (Fernet). Nunca se proyecta a la API.",
+    )
+
     # -- Correo saliente (política editable; secretos SIEMPRE cifrados) -------------
     email_mode: Mapped[str] = mapped_column(
         String(20),

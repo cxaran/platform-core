@@ -171,6 +171,19 @@ def build_setup_checklist(
         )
     )
 
+    items.append(
+        ChecklistItem(
+            key="google_login",
+            title="Inicio de sesión con Google",
+            status="complete",  # decisión tomada (default: deshabilitado)
+            detail=(
+                "Habilitado."
+                if system.google_login_enabled
+                else "Deshabilitado (los usuarios entran con contraseña)."
+            ),
+        )
+    )
+
     setup = session.get(PlatformSetup, 1)
     dismissed = setup is not None and setup.onboarding_dismissed_at is not None
     return items, dismissed

@@ -22,6 +22,7 @@ from backend.app.schemas.auth import (
 from backend.app.schemas.user import SessionUser
 from backend.app.security.rate_limit import (
     limit_forgot_password,
+    limit_google_login,
     limit_login,
     limit_login_verify,
     limit_register_complete,
@@ -50,9 +51,12 @@ def read_auth_policy(session: SessionDep) -> AuthPolicyRead:
     El registro público es la política EFECTIVA: lo persistido en system_settings
     (editable por administradores) AND el candado del despliegue.
     """
+    from backend.app.auth.google_login import is_google_login_enabled
+
     return AuthPolicyRead(
         registration_enabled=is_public_registration_enabled(session),
         password_reset_enabled=is_password_reset_enabled(session),
+        google_login_enabled=is_google_login_enabled(session),
     )
 
 
@@ -150,6 +154,78 @@ def verify_login(
     clear_challenge_cookie(response)
     set_session_cookie(response, create_access_token(str(user.id), user.token))
     return LoginResponse(message="Sesión iniciada correctamente")
+
+
+@router.get("/google/start")
+def google_login_start(request: Request, session: SessionDep):
+    """Arranca el OAuth con Google: 302 a la pantalla de consentimiento.
+
+    404 genérico con la función deshabilitada (no revela si existe la política);
+    el state viaja hasheado en Redis con consumo único y TTL corto."""
+    from fastapi.responses import RedirectResponse
+
+    from backend.app.auth.google_login import (
+        GoogleLoginError,
+        build_authorization_url,
+        is_google_login_enabled,
+    )
+
+    limit_google_login(request)
+    if not is_google_login_enabled(session):
+        api_error(status.HTTP_404_NOT_FOUND, "not_found", "No disponible")
+    try:
+        url = build_authorization_url(session, request)
+    except GoogleLoginError:
+        api_error(status.HTTP_404_NOT_FOUND, "not_found", "No disponible")
+    return RedirectResponse(url, status_code=status.HTTP_302_FOUND)
+
+
+@router.get("/google/callback")
+async def google_login_callback(
+    request: Request,
+    session: SessionDep,
+    code: str = "",
+    state: str = "",
+):
+    """Aterrizaje del OAuth: valida state+nonce+id_token y resuelve la cuenta.
+
+    Éxito → cookie de sesión y 302 al inicio (SIN pasar por la verificación de
+    login por correo: Google ya autenticó). Cualquier fallo → 302 a /login con
+    un marcador genérico; la causa real queda sólo en los logs."""
+    from fastapi.responses import RedirectResponse
+
+    from backend.app.auth.google_login import (
+        GoogleLoginError,
+        _consume_state,
+        exchange_code,
+        is_google_login_enabled,
+        oauth_base_url,
+        resolve_user,
+    )
+    from backend.app.auth.security import create_access_token
+
+    base = oauth_base_url(session, request)
+    failure = RedirectResponse(
+        f"{base}/login?error=google", status_code=status.HTTP_302_FOUND
+    )
+    if not is_google_login_enabled(session) or not code or not state:
+        return failure
+    nonce = _consume_state(state)
+    if nonce is None:
+        return failure
+    try:
+        profile = await exchange_code(session, request, code, nonce)
+        user = resolve_user(session, profile)
+    except GoogleLoginError as error:
+        # Causa estable sólo en logs; el navegador recibe un marcador genérico.
+        import logging
+
+        logging.getLogger("backend.security").info("google login rejected: %s", error.code)
+        return failure
+
+    success = RedirectResponse(f"{base}/", status_code=status.HTTP_302_FOUND)
+    set_session_cookie(success, create_access_token(str(user.id), user.token))
+    return success
 
 
 @router.post("/logout", response_model=MessageResponse)
