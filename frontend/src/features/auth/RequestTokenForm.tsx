@@ -4,6 +4,8 @@ import { FormEvent, useState } from "react";
 
 import { Button } from "@/components/ui/Button";
 import { FieldError } from "@/components/ui/FieldError";
+import { Input } from "@/components/ui/Input";
+import { AuthAlert, AuthLabel, AuthLink } from "@/features/auth/PublicAuthShell";
 import { ApiRequestError } from "@/core/api/api-error";
 import { publicAuthGeneralError } from "@/core/auth/public-auth";
 import { requestPasswordReset, requestRegistration } from "@/core/auth/public-auth-client";
@@ -60,30 +62,21 @@ export function RequestTokenForm({ mode }: Readonly<{ mode: Mode }>) {
   if (done) {
     return (
       <div className="space-y-4">
-        <div role="status" className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+        <AuthAlert tone="ok" role="status">
           {copy.success}
-        </div>
-        <a href={copy.nextHref} className="block text-sm font-medium text-slate-900 underline-offset-2 hover:underline">
-          {copy.nextLabel}
-        </a>
+        </AuthAlert>
+        <p className="text-sm">
+          <AuthLink href={copy.nextHref}>{copy.nextLabel}</AuthLink>
+        </p>
       </div>
     );
   }
 
   return (
     <form className="space-y-4" onSubmit={onSubmit}>
-      <div className="space-y-1">
-        <label htmlFor="email" className="text-sm font-medium text-slate-900">
-          Email
-        </label>
-        <input
-          id="email"
-          name="email"
-          type="email"
-          autoComplete="email"
-          required
-          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-950"
-        />
+      <div className="space-y-1.5">
+        <AuthLabel htmlFor="email">Correo electrónico</AuthLabel>
+        <Input id="email" name="email" type="email" autoComplete="email" required />
       </div>
       <FieldError message={error} />
       <Button type="submit" className="w-full" disabled={pending}>

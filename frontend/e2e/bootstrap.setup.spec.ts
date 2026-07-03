@@ -89,9 +89,28 @@ function userRow(page: Page, email: string) {
 
 async function login(page: Page, email: string, password: string) {
   await page.goto("/login");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Contraseña").fill(password);
+  await page.getByLabel("Correo electrónico").fill(email);
+  // exact: evita colisionar con el botón "Mostrar contraseña" del campo.
+  await page.getByLabel("Contraseña", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Ingresar" }).click();
+}
+
+// Abre el editor de filtros de UN campo desde la barra ("+ Filtro" → campo). El
+// panel es un dialog accesible: primero lista los campos y, al elegir uno, muestra
+// sus operadores (los labels son los del contrato: "Contiene", "En la fecha"...).
+async function openFilterEditor(page: Page, fieldLabel: string) {
+  await page.getByRole("button", { name: "Filtro" }).click();
+  const picker = page.getByRole("dialog", { name: "Añadir filtro" });
+  await picker.getByRole("button", { name: new RegExp(`^${fieldLabel} `) }).click();
+  return page.getByRole("dialog", { name: `Filtrar · ${fieldLabel}` });
+}
+
+// Abre el flyout de acciones de una fila (pestaña ⋯ accesible para teclado/táctil).
+async function openRowFlyout(page: Page, listPath: string, rowText: string) {
+  await page.goto(listPath);
+  const row = page.getByRole("row", { name: new RegExp(rowText) });
+  await row.getByRole("button", { name: "Acciones de la fila" }).click();
+  return row;
 }
 
 // Limpia solo las claves de rate limit del Redis E2E para aislar el bucket de un
@@ -148,11 +167,8 @@ async function openRowAction(
   rowText: string,
   actionLabel: string,
 ) {
-  await page.goto(listPath);
-  await page
-    .getByRole("row", { name: new RegExp(rowText) })
-    .getByRole("link", { name: actionLabel })
-    .click();
+  const row = await openRowFlyout(page, listPath, rowText);
+  await row.getByRole("link", { name: actionLabel }).click();
 }
 
 // Clic en un botón de acción declarativa dentro de una fila (no un enlace).
@@ -163,11 +179,8 @@ async function clickRowButton(
   rowText: string,
   buttonLabel: string,
 ) {
-  await page.goto(listPath);
-  await page
-    .getByRole("row", { name: new RegExp(rowText) })
-    .getByRole("button", { name: buttonLabel, exact: true })
-    .click();
+  const row = await openRowFlyout(page, listPath, rowText);
+  await row.getByRole("button", { name: buttonLabel, exact: true }).click();
 }
 
 // Confirma (o cancela) dentro del diálogo accesible con matching exacto.
@@ -182,12 +195,12 @@ async function createUserViaForm(
   await page.goto("/resources/users");
   await page.getByRole("link", { name: "Nuevo" }).click();
   await expect(page.getByRole("heading", { name: "Crear Usuarios" })).toBeVisible();
-  await page.getByLabel("Nombre").fill(user.name);
-  await page.getByLabel("Apellido").fill(user.last);
-  await page.getByLabel("Correo").fill(user.email);
-  await page.getByLabel("Contraseña", { exact: true }).fill(user.password);
-  await page.getByLabel("Confirmar contraseña").fill(user.password);
-  await page.getByLabel("Activo").check();
+  await page.getByRole("textbox", { name: "Nombre", exact: true }).fill(user.name);
+  await page.getByRole("textbox", { name: "Apellido", exact: true }).fill(user.last);
+  await page.getByRole("textbox", { name: "Correo", exact: true }).fill(user.email);
+  await page.getByRole("textbox", { name: "Contraseña", exact: true }).fill(user.password);
+  await page.getByRole("textbox", { name: "Confirmar contraseña", exact: true }).fill(user.password);
+  await page.getByRole("checkbox", { name: /Activo/ }).check();
   await page.getByRole("button", { name: "Crear" }).click();
   await expect(page).toHaveURL(/\/resources\/users$/);
 }
@@ -227,6 +240,9 @@ test.describe.serial("fresh install bootstrap and admin relations", () => {
 
       await expect(page.getByRole("heading", { name: "Roles iniciales" })).toBeVisible();
       await expect(page.getByText("Permisos completos administrados por backend")).toBeVisible();
+      // Política inicial del asistente: habilitar el registro público (los pasos de
+      // registro por correo del final dependen de esta política persistida en DB).
+      await page.getByLabel("Permitir registro público de cuentas").check();
       await page.getByRole("button", { name: "Agregar rol" }).click();
       await page.getByLabel("Nombre").last().fill("Operación");
       await page.getByLabel("Descripción").last().fill("Rol operativo inicial");
@@ -243,8 +259,8 @@ test.describe.serial("fresh install bootstrap and admin relations", () => {
     });
 
     await test.step("Login del administrador inicial", async () => {
-      await page.getByLabel("Email").fill(adminEmail);
-      await page.getByLabel("Contraseña").fill(adminPassword);
+      await page.getByLabel("Correo electrónico").fill(adminEmail);
+      await page.getByLabel("Contraseña", { exact: true }).fill(adminPassword);
       await page.getByRole("button", { name: "Ingresar" }).click();
       await expect(page).toHaveURL(/\/$/);
       await expect(page.getByText("Platform Core")).toBeVisible();
@@ -272,13 +288,13 @@ test.describe.serial("fresh install bootstrap and admin relations", () => {
       await expect(page.getByRole("heading", { name: "Usuarios" })).toBeVisible();
       await page.getByRole("link", { name: "Nuevo" }).click();
       await expect(page.getByRole("heading", { name: "Crear Usuarios" })).toBeVisible();
-      await page.getByLabel("Nombre").fill("Usuario");
-      await page.getByLabel("Apellido").fill("Estandar");
-      await page.getByLabel("Correo").fill(standardEmail);
-      await page.getByLabel("Contraseña", { exact: true }).fill(standardPassword);
-      await page.getByLabel("Confirmar contraseña").fill(standardPassword);
-      await expect(page.getByLabel("Activo")).not.toBeChecked();
-      await page.getByLabel("Activo").check();
+      await page.getByRole("textbox", { name: "Nombre", exact: true }).fill("Usuario");
+      await page.getByRole("textbox", { name: "Apellido", exact: true }).fill("Estandar");
+      await page.getByRole("textbox", { name: "Correo", exact: true }).fill(standardEmail);
+      await page.getByRole("textbox", { name: "Contraseña", exact: true }).fill(standardPassword);
+      await page.getByRole("textbox", { name: "Confirmar contraseña", exact: true }).fill(standardPassword);
+      await expect(page.getByRole("checkbox", { name: /Activo/ })).not.toBeChecked();
+      await page.getByRole("checkbox", { name: /Activo/ }).check();
       await page.getByRole("button", { name: "Crear" }).click();
       await expect(page).toHaveURL(/\/resources\/users$/);
       await expect(page.getByText(standardEmail)).toBeVisible();
@@ -520,8 +536,9 @@ test.describe.serial("fresh install bootstrap and admin relations", () => {
 
     await test.step("Filtro de texto: contains case-insensitive por nombre", async () => {
       await gotoUsersList(page);
-      await page.getByLabel("Nombre · Contiene", { exact: true }).fill("acci");
-      await page.getByRole("button", { name: "Aplicar" }).click();
+      const panel = await openFilterEditor(page, "Nombre");
+      await panel.getByLabel("Contiene", { exact: true }).fill("acci");
+      await panel.getByRole("button", { name: "Aplicar" }).click();
       await expect(userRow(page, actionUserEmail)).toHaveCount(1);
       await expect(userRow(page, adminEmail)).toHaveCount(0);
       await expect(userRow(page, updatedEmail)).toHaveCount(0);
@@ -531,22 +548,25 @@ test.describe.serial("fresh install bootstrap and admin relations", () => {
 
     await test.step("Filtro de texto: contains por correo (sin colisión con el sort)", async () => {
       await gotoUsersList(page);
-      await page.getByLabel("Correo · Contiene", { exact: true }).fill("actualizado");
-      await page.getByRole("button", { name: "Aplicar" }).click();
+      const panel = await openFilterEditor(page, "Correo");
+      await panel.getByLabel("Contiene", { exact: true }).fill("actualizado");
+      await panel.getByRole("button", { name: "Aplicar" }).click();
       await expect(userRow(page, updatedEmail)).toHaveCount(1);
       await expect(userRow(page, actionUserEmail)).toHaveCount(0);
     });
 
     await test.step("Filtro de fecha de calendario: on hoy incluye, after hoy excluye", async () => {
       await gotoUsersList(page);
-      await page.getByLabel("Creado · En la fecha", { exact: true }).fill(todayUtcDate());
-      await page.getByRole("button", { name: "Aplicar" }).click();
+      let panel = await openFilterEditor(page, "Creado");
+      await panel.getByLabel("En la fecha", { exact: true }).fill(todayUtcDate());
+      await panel.getByRole("button", { name: "Aplicar" }).click();
       await expect(userRow(page, adminEmail)).toHaveCount(1);
       await expect(userRow(page, actionUserEmail)).toHaveCount(1);
 
       await gotoUsersList(page);
-      await page.getByLabel("Creado · Después de", { exact: true }).fill(todayUtcDate());
-      await page.getByRole("button", { name: "Aplicar" }).click();
+      panel = await openFilterEditor(page, "Creado");
+      await panel.getByLabel("Después de", { exact: true }).fill(todayUtcDate());
+      await panel.getByRole("button", { name: "Aplicar" }).click();
       await expect(userRow(page, adminEmail)).toHaveCount(0);
       await expect(userRow(page, actionUserEmail)).toHaveCount(0);
       await expect(userRow(page, updatedEmail)).toHaveCount(0);
@@ -554,9 +574,10 @@ test.describe.serial("fresh install bootstrap and admin relations", () => {
 
     await test.step("Filtro de rango de fechas: between con dos extremos inclusivos", async () => {
       await gotoUsersList(page);
-      await page.getByLabel("Creado · Entre (desde)", { exact: true }).fill(todayUtcDate());
-      await page.getByLabel("Creado · Entre (hasta)", { exact: true }).fill(tomorrowUtcDate());
-      await page.getByRole("button", { name: "Aplicar" }).click();
+      const panel = await openFilterEditor(page, "Creado");
+      await panel.getByLabel("Entre (desde)", { exact: true }).fill(todayUtcDate());
+      await panel.getByLabel("Entre (hasta)", { exact: true }).fill(tomorrowUtcDate());
+      await panel.getByRole("button", { name: "Aplicar" }).click();
       await expect(userRow(page, adminEmail)).toHaveCount(1);
       await expect(userRow(page, actionUserEmail)).toHaveCount(1);
       await expect(page).toHaveURL(/created_at_from=/);
@@ -565,8 +586,9 @@ test.describe.serial("fresh install bootstrap and admin relations", () => {
 
     await test.step("Filtro select tri-estado: Inactivos no lista cuentas activas", async () => {
       await gotoUsersList(page);
-      await page.getByLabel("Activo", { exact: true }).selectOption("false");
-      await page.getByRole("button", { name: "Aplicar" }).click();
+      const panel = await openFilterEditor(page, "Activo");
+      await panel.getByLabel("Es igual a", { exact: true }).selectOption("false");
+      await panel.getByRole("button", { name: "Aplicar" }).click();
       await expect(userRow(page, adminEmail)).toHaveCount(0);
       await expect(userRow(page, actionUserEmail)).toHaveCount(0);
     });
@@ -582,8 +604,9 @@ test.describe.serial("fresh install bootstrap and admin relations", () => {
 
     await test.step("El filtro activo se preserva al reordenar la tabla", async () => {
       await gotoUsersList(page);
-      await page.getByLabel("Nombre · Contiene", { exact: true }).fill("acci");
-      await page.getByRole("button", { name: "Aplicar" }).click();
+      const panel = await openFilterEditor(page, "Nombre");
+      await panel.getByLabel("Contiene", { exact: true }).fill("acci");
+      await panel.getByRole("button", { name: "Aplicar" }).click();
       await expect(userRow(page, actionUserEmail)).toHaveCount(1);
 
       // Reordenar por una columna preserva el filtro (href construido por allowlist).
@@ -783,7 +806,7 @@ test.describe.serial("fresh install bootstrap and admin relations", () => {
       await page.goto("/login");
       await page.getByRole("link", { name: "Crear cuenta" }).click();
       await expect(page).toHaveURL(/\/register$/);
-      await page.getByLabel("Email").fill(newUserEmail);
+      await page.getByLabel("Correo electrónico").fill(newUserEmail);
       await page.getByRole("button", { name: "Enviar token de registro" }).click();
       await expect(page.getByText(/te enviamos un token/i)).toBeVisible();
 

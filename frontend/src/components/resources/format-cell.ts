@@ -27,11 +27,26 @@ function pad(value: number): string {
   return String(value).padStart(2, "0");
 }
 
+// ¿La cadena declara zona? (sufijo Z o ±hh[:]mm)
+const HAS_TIMEZONE = /(?:Z|[+-]\d{2}:?\d{2})$/i;
+
+/**
+ * Parseo de fecha-hora del contrato. El backend serializa UTC "naive" (sin zona) y
+ * ``Date.parse`` interpreta las cadenas naive en la zona del ENTORNO — correcto en el
+ * server (UTC) pero desplazado en el navegador (record panel). Se fija 'Z' explícito
+ * para que el instante sea el mismo en ambos lados.
+ */
+export function parseDateTimeMs(value: unknown): number | null {
+  if (typeof value !== "string") return null;
+  const iso = HAS_TIMEZONE.test(value) ? value : `${value}Z`;
+  const ms = Date.parse(iso);
+  return Number.isNaN(ms) ? null : ms;
+}
+
 // Determinista en UTC explícito; nunca zona local del navegador/contenedor.
 function formatDateTime(value: unknown): string {
-  if (typeof value !== "string") return DASH;
-  const ms = Date.parse(value);
-  if (Number.isNaN(ms)) return DASH;
+  const ms = parseDateTimeMs(value);
+  if (ms === null) return DASH;
   const date = new Date(ms);
   const ymd = `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
   const hm = `${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}`;

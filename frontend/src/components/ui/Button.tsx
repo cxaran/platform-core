@@ -2,10 +2,12 @@ import { ButtonHTMLAttributes } from "react";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement>;
 
+// Primitivo de boton (R2): consume tokens de tema (accent / on-accent / sombra).
+// Soporta light y dark automaticamente via [data-theme]. API sin cambios.
 export function Button({ className = "", ...props }: ButtonProps) {
   return (
     <button
-      className={`rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 ${className}`}
+      className={`rounded-[11px] bg-[var(--accent)] px-[18px] py-2.5 text-sm font-semibold text-[var(--on-accent)] shadow-[var(--soft)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 ${className}`}
       {...props}
     />
   );

@@ -20,9 +20,11 @@ function assertInternalApiPath(path: string): void {
 
 export function createResource(
   form: ResourceFormCapability,
-  payload: Record<string, unknown>,
+  payload: Record<string, unknown> | FormData,
 ): Promise<unknown> {
   assertInternalApiPath(form.url_template);
+  // El request layer envía ``FormData`` como ``multipart/form-data`` (sin fijar el
+  // content-type, dejando el boundary al navegador) y el resto como JSON.
   return browserApi<unknown>(form.url_template, {
     method: form.method,
     body: payload,

@@ -129,6 +129,8 @@ function Field({
   type?: "text" | "email";
   help?: string;
 }>) {
+  const hasErrors = (errors?.length ?? 0) > 0;
+  const errorId = hasErrors ? `${id}-error` : undefined;
   return (
     <div className="space-y-1">
       <label htmlFor={id} className="block text-sm font-medium text-slate-900">
@@ -140,10 +142,13 @@ function Field({
         type={type}
         defaultValue={defaultValue}
         required
+        aria-required="true"
+        aria-invalid={hasErrors || undefined}
+        aria-describedby={errorId}
         className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-slate-500 focus:outline-none"
       />
       {help ? <p className="text-xs text-slate-500">{help}</p> : null}
-      <FieldError message={errors?.join(" ")} />
+      <FieldError id={errorId} message={errors?.join(" ")} />
     </div>
   );
 }

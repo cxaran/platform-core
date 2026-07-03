@@ -1,14 +1,608 @@
 @import "tailwindcss";
 
-:root {
-  color-scheme: light;
+/*
+ * Design tokens (R1) — portados de el handoff de diseño (Platform Core.dc.html) (paleta purpura).
+ * Fundacion de presentacion: define las CSS custom properties de tema (light/dark)
+ * para que las rebanadas siguientes (R2+) las consuman. No restylea componentes aqui.
+ */
+
+/*
+ * Extension de tema de Tailwind v4 (MP-CTRL-0121): mapea los tokens del diseno a
+ * utilidades semanticas (bg-bg, bg-panel, text-tx, text-accent, border-border,
+ * shadow-soft, font-sans...). Se usa `inline` para que la utilidad resuelva a la
+ * CSS var EN TIEMPO DE EJECUCION (no se hornea el valor), conservando el cambio
+ * light/dark por [data-theme]. Es ADITIVO: no reemplaza las utilidades por defecto
+ * de Tailwind ni rompe los valores arbitrarios `[var(--x)]` que ya usan los componentes.
+ */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg2: var(--bg2);
+  --color-panel: var(--panel);
+  --color-panel2: var(--panel2);
+  --color-elev: var(--elev);
+  --color-border: var(--border);
+  --color-border2: var(--border2);
+  --color-tx: var(--tx);
+  --color-tx2: var(--tx2);
+  --color-tx3: var(--tx3);
+  --color-accent: var(--accent);
+  --color-accent-tx: var(--accent-tx);
+  --color-accent-dim: var(--accent-dim);
+  --color-accent-bd: var(--accent-bd);
+  --color-on-accent: var(--on-accent);
+  --color-danger: var(--danger);
+  --color-warn: var(--warn);
+  --color-ok: var(--ok);
+  --color-info: var(--info);
+  --color-purple: var(--purple);
+
+  /* Fuente del diseno (Geist) ya cableada por next/font como --font-geist. */
+  --font-sans: var(--font-geist), system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* Sombras del diseno -> utilidades shadow-*. (--shadow del diseno = shadow-overlay). */
+  --shadow-soft: var(--soft);
+  --shadow-soft2: var(--soft2);
+  --shadow-overlay: var(--shadow);
+  --shadow-glow: var(--glow);
 }
 
-body {
-  margin: 0;
-  background: #f1f5f9;
+/*
+ * El tema CLARO es el predeterminado en :root (aplica aunque no haya atributo
+ * data-theme, p. ej. en SSR o entornos de prueba); [data-theme="dark"] lo sobreescribe.
+ */
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #faf9f8;
+  --bg2: #f6f5f3;
+  --panel: #ffffff;
+  --panel2: #f4f4f5;
+  --elev: #ffffff;
+  --border: #eae8e5;
+  --border2: #e0ddd9;
+  --tx: #292524;
+  --tx2: #57534e;
+  --tx3: #a8a29e;
+  --accent: #8b7ff0;
+  --accent-tx: #6655dd;
+  --accent-dim: rgba(139, 127, 240, 0.11);
+  --accent-bd: rgba(139, 127, 240, 0.32);
+  --on-accent: #ffffff;
+  --danger: #dc2626;
+  --warn: #b45309;
+  --ok: #059669;
+  --info: #2563eb;
+  --purple: #7c3aed;
+  --soft:
+    rgba(14, 63, 126, 0.04) 0px 0px 0px 1px, rgba(42, 51, 69, 0.04) 0px 1px 1px -0.5px,
+    rgba(42, 51, 70, 0.04) 0px 3px 3px -1.5px, rgba(42, 51, 70, 0.04) 0px 6px 6px -3px,
+    rgba(14, 63, 126, 0.04) 0px 12px 12px -6px, rgba(14, 63, 126, 0.04) 0px 24px 24px -12px;
+  --soft2:
+    rgba(14, 63, 126, 0.06) 0px 0px 0px 1px, rgba(42, 51, 69, 0.06) 0px 1px 1px -0.5px,
+    rgba(42, 51, 70, 0.06) 0px 3px 3px -1.5px, rgba(42, 51, 70, 0.06) 0px 6px 6px -3px,
+    rgba(14, 63, 126, 0.06) 0px 12px 12px -6px, rgba(14, 63, 126, 0.06) 0px 24px 24px -12px;
+  --shadow: 0 18px 50px rgba(41, 37, 36, 0.13);
+  --glow: 0 0 0 1px rgba(139, 127, 240, 0.2), 0 10px 34px rgba(139, 127, 240, 0.14);
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #1a1715;
+  --bg2: #141110;
+  --panel: #272320;
+  --panel2: #36302b;
+  --elev: #322c28;
+  --border: #46403a;
+  --border2: #574f48;
+  --tx: #fafaf9;
+  --tx2: #d8d4d1;
+  --tx3: #b2aaa3;
+  --accent: #a59bf6;
+  --accent-tx: #cbc4fc;
+  --accent-dim: rgba(165, 155, 246, 0.17);
+  --accent-bd: rgba(165, 155, 246, 0.42);
+  --on-accent: #16121f;
+  --danger: #fca5a5;
+  --warn: #fcd34d;
+  --ok: #4ade80;
+  --info: #7cb8ff;
+  --purple: #c4b5fd;
+  --soft:
+    rgba(255, 255, 255, 0.07) 0 0 0 1px, rgba(0, 0, 0, 0.2) 0px 1px 2px,
+    rgba(0, 0, 0, 0.24) 0px 6px 16px -4px, rgba(0, 0, 0, 0.3) 0px 18px 40px -12px;
+  --soft2:
+    rgba(255, 255, 255, 0.09) 0 0 0 1px, rgba(0, 0, 0, 0.26) 0px 1px 2px,
+    rgba(0, 0, 0, 0.32) 0px 8px 22px -4px, rgba(0, 0, 0, 0.4) 0px 22px 48px -12px;
+  --shadow: 0 20px 54px rgba(0, 0, 0, 0.5);
+  --glow: 0 0 0 1px rgba(165, 155, 246, 0.3), 0 10px 34px rgba(165, 155, 246, 0.18);
 }
 
 * {
   box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--tx);
+  font-family: var(--font-geist), system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+textarea::placeholder,
+input::placeholder {
+  color: var(--tx3);
+}
+
+/*
+ * Scrollbar del diseno (el handoff de diseño (Platform Core.dc.html)). Pista transparente, pulgar fino
+ * sobre --border2 que se aclara a --tx3 en hover.
+ */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border2);
+  border-radius: 8px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--tx3);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/*
+ * ====================================================================
+ * Sistema de animaciones del diseno (portado 1:1 de el handoff de diseño (Platform Core.dc.html)).
+ * Todas las intros son TRANSFORM-ONLY: nunca condicionan opacity para que el
+ * contenido permanezca visible aunque un frame se congele (regla del diseno).
+ * ====================================================================
+ */
+@keyframes mcfade {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes mcblink {
+  0%, 80%, 100% { opacity: 0.2; }
+  40% { opacity: 1; }
+}
+@keyframes mcpulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+@keyframes mcbounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+@keyframes mc-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes mc-step-in {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: none; }
+}
+/* blur-reveal de palabras en streaming (solo transform) */
+@keyframes blur-reveal {
+  0% { transform: translateY(5px); }
+  100% { transform: none; }
+}
+.streaming-word { display: inline-block; }
+/* mensaje del usuario: slide-up con rebote (solo transform) */
+@keyframes slide-up-bounce {
+  0% { transform: translateY(16px); }
+  60% { transform: translateY(-3px); }
+  100% { transform: translateY(0); }
+}
+.user-message-enter { animation: slide-up-bounce 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+.ai-message-enter {}
+.mc-trow:hover { background: var(--panel2); }
+/* intros del orbe y campos */
+@keyframes orb-intro {
+  0% { transform: translateY(-30px) scale(0.86); }
+  100% { transform: none; }
+}
+.orb-intro { animation: orb-intro 1.3s cubic-bezier(0.16, 1, 0.3, 1) both; }
+@keyframes orb-intro-soft {
+  0% { transform: translateY(-16px) scale(0.9); }
+  100% { transform: none; }
+}
+.orb-intro-soft { animation: orb-intro-soft 1.2s cubic-bezier(0.16, 1, 0.3, 1) both; }
+@keyframes blobdrift-a {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(46px, -38px) scale(1.18); }
+}
+@keyframes blobdrift-b {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-52px, 30px) scale(1.12); }
+}
+@keyframes blobdrift-c {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(34px, 42px) scale(0.9); }
+}
+@keyframes field-up {
+  0% { transform: translateY(9px); }
+  100% { transform: none; }
+}
+.field-up { animation: field-up 0.7s cubic-bezier(0.16, 1, 0.3, 1) both; }
+@keyframes composer-intro {
+  0% { transform: translateY(22px); }
+  100% { transform: none; }
+}
+.composer-intro { animation: composer-intro 1s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both; }
+@keyframes text-blur-intro {
+  0% { transform: translateY(8px); }
+  100% { transform: none; }
+}
+.text-blur-intro { animation: text-blur-intro 0.9s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.text-blur-intro-delay { animation: text-blur-intro 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both; }
+/* orbe animado: rotacion de matiz + 5 circulos en orbita */
+@keyframes orb-hue-rotate {
+  0% { filter: hue-rotate(0deg); }
+  25% { filter: hue-rotate(45deg); }
+  50% { filter: hue-rotate(90deg); }
+  75% { filter: hue-rotate(45deg); }
+  100% { filter: hue-rotate(0deg); }
+}
+@keyframes orb-hue-rotate-blur {
+  0% { filter: blur(var(--orb-blur, 6px)) hue-rotate(0deg); }
+  25% { filter: blur(var(--orb-blur, 6px)) hue-rotate(45deg); }
+  50% { filter: blur(var(--orb-blur, 6px)) hue-rotate(90deg); }
+  75% { filter: blur(var(--orb-blur, 6px)) hue-rotate(45deg); }
+  100% { filter: blur(var(--orb-blur, 6px)) hue-rotate(0deg); }
+}
+@keyframes orb-orbit-1 {
+  0% { transform: rotate(0) translateX(25%) rotate(0) scale(1); }
+  25% { transform: rotate(90deg) translateX(30%) rotate(-90deg) scale(1.15); }
+  50% { transform: rotate(180deg) translateX(25%) rotate(-180deg) scale(0.9); }
+  75% { transform: rotate(270deg) translateX(30%) rotate(-270deg) scale(1.1); }
+  100% { transform: rotate(360deg) translateX(25%) rotate(-360deg) scale(1); }
+}
+@keyframes orb-orbit-2 {
+  0% { transform: rotate(90deg) translateX(20%) rotate(-90deg) scale(1); }
+  25% { transform: rotate(180deg) translateX(25%) rotate(-180deg) scale(0.85); }
+  50% { transform: rotate(270deg) translateX(20%) rotate(-270deg) scale(1.2); }
+  75% { transform: rotate(360deg) translateX(25%) rotate(-360deg) scale(0.95); }
+  100% { transform: rotate(450deg) translateX(20%) rotate(-450deg) scale(1); }
+}
+@keyframes orb-orbit-3 {
+  0% { transform: rotate(180deg) translateX(30%) rotate(-180deg) scale(1); }
+  25% { transform: rotate(270deg) translateX(35%) rotate(-270deg) scale(1.1); }
+  50% { transform: rotate(360deg) translateX(30%) rotate(-360deg) scale(0.85); }
+  75% { transform: rotate(450deg) translateX(35%) rotate(-450deg) scale(1.15); }
+  100% { transform: rotate(540deg) translateX(30%) rotate(-540deg) scale(1); }
+}
+@keyframes orb-orbit-4 {
+  0% { transform: rotate(270deg) translateX(15%) rotate(-270deg) scale(1); }
+  25% { transform: rotate(360deg) translateX(20%) rotate(-360deg) scale(1.25); }
+  50% { transform: rotate(450deg) translateX(15%) rotate(-450deg) scale(0.8); }
+  75% { transform: rotate(540deg) translateX(20%) rotate(-540deg) scale(1.1); }
+  100% { transform: rotate(630deg) translateX(15%) rotate(-630deg) scale(1); }
+}
+@keyframes orb-orbit-5 {
+  0% { transform: rotate(45deg) translateX(22%) rotate(-45deg) scale(1); }
+  25% { transform: rotate(135deg) translateX(28%) rotate(-135deg) scale(0.9); }
+  50% { transform: rotate(225deg) translateX(22%) rotate(-225deg) scale(1.15); }
+  75% { transform: rotate(315deg) translateX(28%) rotate(-315deg) scale(0.95); }
+  100% { transform: rotate(405deg) translateX(22%) rotate(-405deg) scale(1); }
+}
+.orb-c1 { animation: orb-orbit-1 6s ease-in-out infinite; }
+.orb-c2 { animation: orb-orbit-2 5s ease-in-out infinite; }
+.orb-c3 { animation: orb-orbit-3 7s ease-in-out infinite; }
+.orb-c4 { animation: orb-orbit-4 4s ease-in-out infinite; }
+.orb-c5 { animation: orb-orbit-5 5.5s ease-in-out infinite; }
+
+/*
+ * ====================================================================
+ * Shell responsive (portado de el handoff de diseño (Platform Core.dc.html)). En escritorio la barra
+ * lateral es estatica; en <=880px se vuelve un cajon (drawer) deslizante
+ * controlado por [data-nav-open="1"] en el contenedor del shell, con backdrop.
+ * El boton hamburguesa (.mc-menu-btn) solo aparece en movil.
+ * ====================================================================
+ */
+.mc-menu-btn { display: none; }
+.mc-sidebar-backdrop { display: none; }
+.mc-scroll-x { overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; }
+
+@media (max-width: 880px) {
+  .mc-sidebar {
+    position: fixed !important;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    height: 100vh;
+    width: min(84vw, 300px) !important;
+    flex-basis: auto !important;
+    z-index: 90;
+    transform: translateX(-100%);
+    transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: var(--soft2);
+  }
+  [data-nav-open="1"] .mc-sidebar { transform: translateX(0); }
+  [data-nav-open="1"] .mc-sidebar-backdrop { display: block; }
+  .mc-menu-btn { display: flex !important; }
+}
+
+/*
+ * ====================================================================
+ * Tabla de recursos (tanda 0) — acciones de fila flotantes.
+ * La celda de acciones es sticky al borde derecho del viewport de scroll:
+ * queda visible sin importar el ancho de la tabla ni la posicion del scroll
+ * horizontal. En dispositivos con puntero las acciones se revelan al pasar
+ * el cursor por la fila; la pestana persistente (⋯) es el toggle explicito
+ * para tactil/teclado, donde no existe hover.
+ * ====================================================================
+ */
+.rt-viewport { position: relative; }
+.rt-scroller { overflow: auto; -webkit-overflow-scrolling: touch; }
+
+/* Header sticky dentro del scroller (la tabla también scrollea en Y cuando el
+   caller acota max-height). Cada th lleva su fondo + hairline inferior propios
+   porque los bordes del tr no viajan con position:sticky. Los z-index dejan el
+   header por ENCIMA de las celdas sticky del cuerpo al scrollear verticalmente. */
+.rt-thead th {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  background: var(--panel);
+  box-shadow: inset 0 -1px 0 var(--border);
+}
+.rt-thead .rt-actions-head { z-index: 7; }
+.rt-viewport[data-clip-top="1"] .rt-thead th {
+  box-shadow:
+    inset 0 -1px 0 var(--border),
+    0 5px 10px -6px rgba(20, 17, 16, 0.2);
+}
+
+/* Sombras de borde: solo cuando hay contenido recortado hacia ese lado. */
+.rt-shade {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 26px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 4;
+}
+.rt-shade-left { left: 0; background: linear-gradient(to right, rgba(20, 17, 16, 0.12), transparent); }
+.rt-shade-right { right: 0; background: linear-gradient(to left, rgba(20, 17, 16, 0.12), transparent); }
+.rt-viewport[data-clip-left="1"] .rt-shade-left { opacity: 1; }
+.rt-viewport[data-clip-right="1"] .rt-shade-right { opacity: 1; }
+
+/* Fila: --row-bg alimenta el degradado de la celda sticky para que el fondo
+   de las acciones combine con el estado hover de la fila. */
+.rt-row { --row-bg: var(--panel); transition: background-color 0.18s cubic-bezier(0.4, 0, 0.2, 1); }
+.rt-row:hover { --row-bg: var(--panel2); background: var(--panel2); }
+
+/* Fila enfocada por teclado (navegación j/k/flechas): resalte + barra acento. */
+.rt-row:focus {
+  --row-bg: var(--panel2);
+  outline: none;
+  background: var(--panel2);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+/* Celda de acciones anclada al borde visible del scroll. */
+.rt-actions-cell {
+  position: sticky;
+  right: 0;
+  z-index: 2;
+  background: linear-gradient(to right, transparent, var(--row-bg, var(--panel)) 34%);
+}
+.rt-actions-head {
+  position: sticky;
+  right: 0;
+  /* El header no lleva banda de color: el sticky cubre con el fondo del panel.
+     top/z-index los aporta .rt-thead th (esquina sticky en ambos ejes). */
+  background: var(--panel);
+}
+
+/* En tactil no hay hover que revele el embudo de filtro de la columna: se
+   muestra siempre (la regla es unlayered → gana a la utility opacity-0). */
+@media (hover: none) {
+  .rt-col-filter {
+    opacity: 1;
+  }
+}
+
+/*
+ * ====================================================================
+ * Tanda 3A — respuesta por CONTAINER queries (no viewport): la misma tabla
+ * decide su forma por el ancho de SU contenedor, porque vive en dos contextos
+ * muy distintos (página /resources completa vs record panel del chat).
+ * - Rango intermedio (<52rem): se ocultan las columnas de BAJA prioridad
+ *   (.rt-prio-low: datetimes de auditoría, uuids — heurística del contrato).
+ * - Contenedor angosto (<35rem): el MISMO markup de tabla se re-compone como
+ *   TARJETAS (tr=card, td=par etiqueta/valor vía data-label, primera columna
+ *   como título, acciones al pie). Cero JS y cero DOM duplicado; en navegadores
+ *   sin @container simplemente queda la tabla con scroll.
+ * ====================================================================
+ */
+.rt-container {
+  container-type: inline-size;
+}
+
+@container (max-width: 52rem) {
+  .rt-prio-low {
+    display: none;
+  }
+}
+
+@container (max-width: 35rem) {
+  .rt-cards .rt-scroller {
+    overflow: visible;
+  }
+  .rt-cards .rt-shade {
+    display: none;
+  }
+  .rt-cards table {
+    display: block;
+    min-width: 0;
+  }
+  .rt-cards thead {
+    display: none;
+  }
+  .rt-cards tbody {
+    display: block;
+  }
+  .rt-cards tr.rt-row {
+    display: flex;
+    flex-direction: column;
+    padding: 10px 14px;
+  }
+  .rt-cards td {
+    display: grid;
+    grid-template-columns: minmax(84px, 38%) 1fr;
+    align-items: baseline;
+    gap: 10px;
+    padding: 2px 0;
+  }
+  .rt-cards td::before {
+    content: attr(data-label);
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--tx3);
+  }
+  /* Título de la tarjeta: la primera columna de TEXTO (marcada en el markup),
+     reordenada al frente con flex order, sin etiqueta. */
+  .rt-cards td.rt-card-title {
+    order: -1;
+    display: block;
+    padding-bottom: 4px;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .rt-cards td.rt-card-title::before {
+    content: none;
+  }
+  .rt-cards td.rt-card-title span {
+    max-width: none;
+    white-space: normal;
+    text-align: left;
+  }
+  /* Acciones al pie de la tarjeta; el sticky/degradado no aplican aquí. */
+  .rt-cards td.rt-actions-cell {
+    display: flex;
+    justify-content: flex-end;
+    position: static;
+    background: none;
+    padding-top: 8px;
+  }
+  .rt-cards td.rt-actions-cell::before {
+    content: none;
+  }
+}
+
+/* Encabezados redimensionables (patrón de Eseasa): el resize nativo del th ajusta
+   el ancho de la columna arrastrando la esquina inferior derecha; el grip visual
+   se oculta. Progressive enhancement: donde el navegador no soporte resize en
+   celdas de tabla, simplemente no pasa nada. */
+.rt-th-resize {
+  resize: horizontal;
+  overflow: hidden;
+}
+.rt-th-resize::-webkit-resizer {
+  display: none;
+}
+
+/* Pestana persistente: siempre visible; unico toggle donde no hay hover. */
+.rt-anchor { position: relative; display: inline-flex; align-items: center; }
+.rt-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--elev);
+  color: var(--tx3);
+  cursor: pointer;
+  box-shadow: var(--soft);
+  transition:
+    color 0.18s,
+    border-color 0.18s,
+    background-color 0.18s,
+    transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.rt-tab:hover { color: var(--accent-tx); border-color: var(--accent-bd); }
+.rt-anchor[data-open="1"] .rt-tab {
+  color: var(--accent-tx);
+  background: var(--accent-dim);
+  border-color: var(--accent-bd);
+  transform: rotate(90deg);
+}
+
+/* Flyout: pildora elevada que se despliega hacia la izquierda de la pestana.
+   Oculto con opacity (no visibility) para que el foco de teclado pueda entrar
+   a los enlaces y revelarlo via :focus-within. Los chips van SIEMPRE en una sola
+   linea: el wrap a dos lineas excede el alto de la fila y el overflow del
+   scroller lo recorta. El ancho crece hasta casi todo el contenedor de la tabla
+   (100cqw, resuelto contra .rt-container) y, si aun asi no cabe, la pildora
+   scrollea horizontalmente por dentro (flex-start deja el inicio alcanzable;
+   con width: max-content el shrink-to-fit alinea a la derecha igual). */
+.rt-flyout {
+  position: absolute;
+  top: 50%;
+  right: calc(100% + 8px);
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+  gap: 2px;
+  /* max-content: el shrink-to-fit del posicionamiento absoluto colapsaria al ancho
+     del ancla (la pestana); el tope lo pone max-width. */
+  width: max-content;
+  max-width: min(70vw, 440px);
+  /* 112px ≈ pestana + lead opcional + paddings de la celda de acciones. */
+  max-width: calc(100cqw - 112px);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  padding: 4px;
+  border-radius: 15px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--elev) 92%, transparent);
+  backdrop-filter: blur(10px) saturate(160%);
+  box-shadow: var(--soft2);
+  opacity: 0;
+  transform: translateY(-50%) translateX(10px) scale(0.96);
+  transform-origin: right center;
+  pointer-events: none;
+  transition:
+    opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 5;
+}
+/* ResourceRowActions trae su propio wrapper flex-wrap (deseable en agenda y
+   detalle); dentro de la pildora envolveria a dos lineas otra vez → nowrap
+   (regla unlayered: gana a la utility). */
+.rt-flyout div { flex-wrap: nowrap; }
+.rt-flyout:focus-within,
+.rt-anchor[data-open="1"] .rt-flyout {
+  opacity: 1;
+  transform: translateY(-50%);
+  pointer-events: auto;
+}
+@media (hover: hover) {
+  .rt-row:hover .rt-flyout {
+    opacity: 1;
+    transform: translateY(-50%);
+    pointer-events: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }

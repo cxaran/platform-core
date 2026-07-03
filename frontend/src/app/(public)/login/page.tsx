@@ -1,6 +1,6 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { AuthLink, PublicAuthShell } from "@/features/auth/PublicAuthShell";
 import { LoginForm } from "@/features/auth/LoginForm";
 import { getAuthPolicy } from "@/core/auth/policy-client";
 import { getSession } from "@/core/auth/session";
@@ -24,31 +24,24 @@ export default async function LoginPage() {
   const policy = await getAuthPolicy();
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-100 px-4">
-      <section className="w-full max-w-sm rounded-xl bg-white p-6 shadow-sm">
-        <div className="mb-6">
-          <p className="text-sm text-slate-500">Platform Core</p>
-          <h1 className="text-2xl font-semibold text-slate-950">Iniciar sesión</h1>
-        </div>
-        <LoginForm />
-        <div className="mt-6 space-y-2 text-sm text-slate-600">
-          {policy.password_reset_enabled ? (
-            <p>
-              <Link href="/forgot-password" className="font-medium text-slate-900 underline-offset-2 hover:underline">
-                ¿Olvidaste tu contraseña?
-              </Link>
-            </p>
-          ) : null}
-          {policy.registration_enabled ? (
-            <p>
-              ¿No tienes cuenta?{" "}
-              <Link href="/register" className="font-medium text-slate-900 underline-offset-2 hover:underline">
-                Crear cuenta
-              </Link>
-            </p>
-          ) : null}
-        </div>
-      </section>
-    </main>
+    <PublicAuthShell title="Iniciar sesión">
+      <LoginForm />
+      <div className="mt-6 space-y-2 text-sm text-[var(--tx2)]">
+        {policy.password_reset_enabled ? (
+          <p>
+            <AuthLink href="/forgot-password">¿Olvidaste tu contraseña?</AuthLink>
+          </p>
+        ) : null}
+        {policy.registration_enabled ? (
+          <p>
+            ¿No tienes cuenta? <AuthLink href="/register">Crear cuenta</AuthLink>
+          </p>
+        ) : null}
+        {/* El desbloqueo no depende de la política: el correo de bloqueo siempre envía token. */}
+        <p>
+          ¿Cuenta bloqueada? <AuthLink href="/unlock">Desbloquear con token</AuthLink>
+        </p>
+      </div>
+    </PublicAuthShell>
   );
 }

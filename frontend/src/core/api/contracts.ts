@@ -7,12 +7,13 @@ export type UserProfileRead = components["schemas"]["UserProfileRead"];
 export type UserProfileUpdate = components["schemas"]["UserProfileUpdate"];
 export type UserPasswordChangeRequest = components["schemas"]["UserPasswordChangeRequest"];
 
+export type MessageResponse = components["schemas"]["MessageResponse"];
+
 // Capabilities de recursos (Commit 3 backend). Aliases type-only sobre los schemas
 // generados; nunca interfaces escritas a mano.
 export type ResourceCapability = components["schemas"]["ResourceCapability"];
 export type ResourceListCapability = components["schemas"]["ResourceListCapability"];
 export type ResourceFieldCapability = components["schemas"]["ResourceFieldCapability"];
-export type ResourceFilterCapability = components["schemas"]["ResourceFilterCapability"];
 export type ResourceFilterOption = components["schemas"]["ResourceFilterOption"];
 export type FilterableFieldCapability = components["schemas"]["FilterableFieldCapability"];
 export type FilterableOperatorCapability =
@@ -23,15 +24,30 @@ export type ResourceFormsCapability = components["schemas"]["ResourceFormsCapabi
 export type ResourceFormCapability = components["schemas"]["ResourceFormCapability"];
 export type ResourceFormFieldCapability =
   components["schemas"]["ResourceFormFieldCapability"];
+// Formularios con carga de archivo (multipart) y descarga de binario por item.
+export type FormTransport = components["schemas"]["FormTransport"];
+export type ResourceFileFieldCapability =
+  components["schemas"]["ResourceFileFieldCapability"];
+export type ResourceFileDownloadCapability =
+  components["schemas"]["ResourceFileDownloadCapability"];
 export type ResourceActionCapability = components["schemas"]["ResourceActionCapability"];
 export type ActionRequestSpec = components["schemas"]["ActionRequestSpec"];
 export type ActionConfirmation = components["schemas"]["ActionConfirmation"];
 export type ActionSuccessBehavior = components["schemas"]["ActionSuccessBehavior"];
+// Formulario de entrada declarado de una acción (B2) y DSL serializable de condiciones
+// de estado (B3). Sólo guía de UI: el backend revalida la transición en cada ejecución.
+export type ActionInputSchema = components["schemas"]["ActionInputSchema"];
+export type ActionCondition = components["schemas"]["ActionCondition"];
+export type ActionConditionPredicate = components["schemas"]["ActionConditionPredicate"];
+export type ActionConditionOperator = components["schemas"]["ActionConditionOperator"];
 export type ItemReference = components["schemas"]["ItemReference"];
 export type ResourceDetailCapability = components["schemas"]["ResourceDetailCapability"];
 export type ResourceRelationCapability = components["schemas"]["ResourceRelationCapability"];
+// Lista relacionada navegable por item (p. ej. signos vitales de una consulta): enlace a la
+// lista del recurso destino filtrada con parameter_name=<id del item>. Solo lectura.
+export type ResourceRelatedListCapability =
+  components["schemas"]["ResourceRelatedListCapability"];
 export type RelationOptionsSource = components["schemas"]["RelationOptionsSource"];
-export type RelationCardinality = components["schemas"]["RelationCardinality"];
 export type OptionsSourceType = components["schemas"]["OptionsSourceType"];
 export type ResourceView = components["schemas"]["ResourceView"];
 export type FieldValueType = components["schemas"]["FieldValueType"];
@@ -50,6 +66,7 @@ export type PermissionGroupRead = components["schemas"]["PermissionGroupRead"];
 export type PermissionsCatalog =
   operations["list_permissions_api_v1_permissions_get"]["responses"][200]["content"]["application/json"];
 export type RolePermissionsRead = components["schemas"]["RolePermissionsRead"];
+
 
 export type BootstrapStatusRead = components["schemas"]["BootstrapStatusRead"];
 export type BootstrapCatalogRead = components["schemas"]["BootstrapCatalogRead"];

@@ -80,7 +80,11 @@ export function ResourceUpdateForm({
 
     try {
       const formData = new FormData(event.currentTarget);
-      await updateResource(mutationUrl, update.method, buildUpdatePayload(update.fields, formData));
+      await updateResource(
+        mutationUrl,
+        update.method,
+        buildUpdatePayload(update.fields, formData),
+      );
       router.replace(listPath);
     } catch (error) {
       if (error instanceof ApiRequestError) {

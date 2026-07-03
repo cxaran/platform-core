@@ -18,7 +18,7 @@ export default async function SetupPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,#dbeafe,transparent_28rem),linear-gradient(135deg,#f8fafc,#eef2ff)] px-4 py-8 text-slate-950 sm:py-12">
+    <main className="min-h-screen bg-[var(--bg)] px-4 py-8 text-[var(--tx)] sm:py-12">
       <BootstrapWizard status={status} />
     </main>
   );

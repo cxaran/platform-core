@@ -102,6 +102,8 @@ function Field({
   label,
   errors,
 }: Readonly<{ id: string; name: string; label: string; errors?: string[] }>) {
+  const hasErrors = (errors?.length ?? 0) > 0;
+  const errorId = hasErrors ? `${id}-error` : undefined;
   return (
     <div className="space-y-1">
       <label htmlFor={id} className="block text-sm font-medium text-slate-900">
@@ -112,10 +114,13 @@ function Field({
         name={name}
         type="password"
         required
+        aria-required="true"
+        aria-invalid={hasErrors || undefined}
+        aria-describedby={errorId}
         autoComplete="new-password"
         className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-slate-500 focus:outline-none"
       />
-      <FieldError message={errors?.join(" ")} />
+      <FieldError id={errorId} message={errors?.join(" ")} />
     </div>
   );
 }

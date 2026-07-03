@@ -7,8 +7,16 @@ import { Button } from "@/components/ui/Button";
 import { ResourceFormFields } from "@/components/resources/ResourceFormFields";
 import { ApiRequestError } from "@/core/api/api-error";
 import type { ResourceFormCapability } from "@/core/api/contracts";
-import { buildCreatePayload } from "@/core/resources/resource-form";
+import { buildCreatePayload, buildMultipartPayload } from "@/core/resources/resource-form";
 import { createResource } from "@/core/resources/resource-mutation-client";
+
+/** Tamaño legible (KB/MB) para los textos de ayuda del campo de archivo. */
+function formatBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+  return `${Math.round(bytes / 1024)} KB`;
+}
 
 type FieldErrors = Record<string, string[]>;
 
@@ -57,7 +65,11 @@ export function ResourceCreateForm({
   const [generalError, setGeneralError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const listPath = `/resources/${encodeURIComponent(resourceName)}`;
+  const fileField = create.transport === "multipart" ? create.file_field ?? null : null;
   const allowedFields = new Set(create.fields.map((field) => field.name));
+  if (fileField) {
+    allowedFields.add(fileField.name);
+  }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -69,7 +81,33 @@ export function ResourceCreateForm({
 
     try {
       const formData = new FormData(event.currentTarget);
-      await createResource(create, buildCreatePayload(create.fields, formData));
+
+      if (fileField) {
+        // Validación cliente del archivo (el backend revalida tipo y tamaño en cada carga).
+        const file = formData.get(fileField.name);
+        const hasFile = file instanceof File && file.size > 0;
+        if (!hasFile) {
+          if (fileField.required) {
+            setFieldErrors({ [fileField.name]: ["Selecciona un archivo."] });
+            setPending(false);
+            return;
+          }
+        } else if (file.size > fileField.max_size_bytes) {
+          setFieldErrors({
+            [fileField.name]: [
+              `El archivo supera el tamaño máximo (${formatBytes(fileField.max_size_bytes)}).`,
+            ],
+          });
+          setPending(false);
+          return;
+        }
+      }
+
+      if (fileField) {
+        await createResource(create, buildMultipartPayload(create.fields, formData, fileField));
+      } else {
+        await createResource(create, buildCreatePayload(create.fields, formData));
+      }
       router.replace(listPath);
     } catch (error) {
       if (error instanceof ApiRequestError) {
@@ -101,6 +139,36 @@ export function ResourceCreateForm({
       {generalError ? (
         <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {generalError}
+        </div>
+      ) : null}
+
+      {fileField ? (
+        <div>
+          <label htmlFor={fileField.name} className="block text-sm font-medium text-slate-900">
+            {fileField.label}
+          </label>
+          <input
+            id={fileField.name}
+            name={fileField.name}
+            type="file"
+            required={fileField.required}
+            accept={fileField.accepted_mime_types.join(",") || undefined}
+            aria-describedby={
+              fieldErrors[fileField.name]?.length ? `${fileField.name}-error` : undefined
+            }
+            className="mt-1 block w-full text-sm text-slate-900 file:mr-3 file:rounded-md file:border-0 file:bg-slate-900 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-slate-800"
+          />
+          <p className="mt-1 text-sm text-slate-500">
+            Tamaño máximo {formatBytes(fileField.max_size_bytes)}.
+            {fileField.accepted_mime_types.length > 0
+              ? ` Tipos permitidos: ${fileField.accepted_mime_types.join(", ")}.`
+              : null}
+          </p>
+          {fieldErrors[fileField.name]?.length ? (
+            <p id={`${fileField.name}-error`} className="mt-1 text-sm text-red-600">
+              {fieldErrors[fileField.name].join(" ")}
+            </p>
+          ) : null}
         </div>
       ) : null}
 

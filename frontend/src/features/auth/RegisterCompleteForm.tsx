@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/Button";
 import { FieldError } from "@/components/ui/FieldError";
+import { Input } from "@/components/ui/Input";
+import { AuthAlert, AuthLabel } from "@/features/auth/PublicAuthShell";
 import { ApiRequestError } from "@/core/api/api-error";
 import { mapAuthFieldErrors, type AuthFieldErrors } from "@/core/auth/public-auth";
 import { completeRegistration } from "@/core/auth/public-auth-client";
@@ -69,9 +71,9 @@ export function RegisterCompleteForm() {
   return (
     <form className="space-y-4" onSubmit={onSubmit}>
       {general ? (
-        <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+        <AuthAlert tone="danger" role="alert">
           {general}
-        </div>
+        </AuthAlert>
       ) : null}
       <Text id="rc-first-name" name="first_name" label="Nombre" error={fieldError("first_name", "name")} />
       <Text id="rc-last-name" name="last_name" label="Apellido" error={fieldError("last_name")} />
@@ -94,17 +96,14 @@ function Text({
   error,
 }: Readonly<{ id: string; name: string; label: string; type?: "text" | "email" | "password"; error?: string }>) {
   return (
-    <div className="space-y-1">
-      <label htmlFor={id} className="text-sm font-medium text-slate-900">
-        {label}
-      </label>
-      <input
+    <div className="space-y-1.5">
+      <AuthLabel htmlFor={id}>{label}</AuthLabel>
+      <Input
         id={id}
         name={name}
         type={type}
         required
         autoComplete={type === "password" ? "new-password" : "off"}
-        className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-950"
       />
       <FieldError message={error} />
     </div>

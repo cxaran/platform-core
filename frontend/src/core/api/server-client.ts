@@ -1,6 +1,6 @@
 import "server-only";
 
-import { ApiRequestInit, requestJson } from "./request";
+import { requestJson, type ApiRequestInit } from "./request";
 
 function backendInternalUrl(): string {
   return process.env.BACKEND_INTERNAL_URL ?? "http://localhost:8000";

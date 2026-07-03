@@ -45,3 +45,11 @@ export function resetPassword(payload: {
     body: payload,
   });
 }
+
+/** Desbloquea una cuenta bloqueada por intentos fallidos con el token recibido por correo. */
+export function unlockAccount(token: string): Promise<unknown> {
+  return browserApi<unknown>("/api/v1/auth/unlock", {
+    method: "POST",
+    body: { token },
+  });
+}
