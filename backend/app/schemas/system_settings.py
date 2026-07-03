@@ -35,6 +35,26 @@ class SystemSettingsUpdate(ApiPatchSchema):
         description="Nombre de la institución para membretes y encabezados.",
         json_schema_extra={"ui": {"form": True, "widget": "text"}},
     )
+    login_verification_mode: Optional[Literal["disabled", "code", "link"]] = Field(
+        default=None,
+        title="Verificación de inicio de sesión",
+        description=(
+            "Segundo paso por correo en cada login: código de un solo uso o enlace. "
+            "Requiere transporte de correo utilizable. Los administradores con "
+            "cobertura completa quedan exentos siempre (garantía anti-bloqueo)."
+        ),
+        json_schema_extra={
+            "ui": {
+                "form": True,
+                "widget": "select",
+                "options": [
+                    {"value": "disabled", "label": "Deshabilitada (sólo contraseña)"},
+                    {"value": "code", "label": "Código por correo"},
+                    {"value": "link", "label": "Enlace por correo"},
+                ],
+            }
+        },
+    )
     password_reset_enabled: Optional[bool] = Field(
         default=None,
         title="Recuperación de contraseña",
@@ -140,6 +160,7 @@ class SystemSettingsRead(ApiReadSchema):
     app_base_url: Optional[str] = None
     app_base_url_verified_at: Optional[datetime] = None
     institution_name: Optional[str] = None
+    login_verification_mode: str
     password_reset_enabled: bool
     # Correo: estado SEGURO (metadata; los secretos jamás se proyectan).
     email_mode: str

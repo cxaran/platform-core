@@ -17,6 +17,23 @@ class LoginRequest(ApiWriteSchema):
     password: SecretStr
 
 
+class LoginResponse(ApiSchema):
+    """Desenlace del login: sesión creada o reto de verificación por correo."""
+
+    message: str
+    # True cuando el segundo paso está activo para este usuario: la sesión NO se
+    # creó; el navegador debe verificar el código/enlace recibido por correo.
+    verification_required: bool = False
+    # Modo del reto (code | link) cuando verification_required es True.
+    verification_mode: str | None = None
+
+
+class LoginVerifyRequest(ApiWriteSchema):
+    """Secreto del reto: el código de 6 dígitos o el token del enlace."""
+
+    code: str = Field(min_length=1, max_length=200)
+
+
 class RegisterRequest(ApiWriteSchema):
     email: EmailStr
 

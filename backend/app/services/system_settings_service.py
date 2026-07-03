@@ -40,6 +40,11 @@ def is_public_registration_enabled(session: Session) -> bool:
     return get_system_settings(session).public_registration_enabled
 
 
+def login_verification_mode(session: Session) -> str:
+    """Modo del segundo paso de login por correo: disabled | code | link."""
+    return get_system_settings(session).login_verification_mode
+
+
 def is_password_reset_enabled(session: Session) -> bool:
     """Política de recuperación de contraseña (sólo DB; sin candado de despliegue:
     es de bajo riesgo — actúa sobre cuentas existentes vía su correo)."""
@@ -145,6 +150,23 @@ def build_setup_checklist(
                 "Respaldo diario habilitado."
                 if backups_ready
                 else "Conecta Google Drive y habilita el respaldo diario."
+            ),
+        )
+    )
+
+    verification = system.login_verification_mode
+    items.append(
+        ChecklistItem(
+            key="login_verification",
+            title="Verificación de inicio de sesión",
+            status="complete",  # siempre es una decisión tomada (default: deshabilitada)
+            detail=(
+                {"code": "Código por correo en cada inicio de sesión.",
+                 "link": "Enlace por correo en cada inicio de sesión."}.get(
+                    verification,
+                    "Deshabilitada (sólo contraseña). Los administradores con "
+                    "cobertura completa quedan exentos siempre.",
+                )
             ),
         )
     )

@@ -2,6 +2,29 @@
 
 import { browserApi } from "@/core/api/browser-client";
 
+/** Desenlace del login: sesión creada o reto de verificación por correo. */
+export type LoginOutcome = {
+  message: string;
+  verification_required?: boolean;
+  verification_mode?: "code" | "link" | null;
+};
+
+/** Inicia sesión; con la verificación activa el backend responde el reto en vez de la cookie. */
+export function login(email: string, password: string): Promise<LoginOutcome> {
+  return browserApi<LoginOutcome>("/api/v1/auth/login", {
+    method: "POST",
+    body: { email, password },
+  });
+}
+
+/** Canjea el código/token del reto por la sesión (misma cookie de navegador del login). */
+export function verifyLogin(code: string): Promise<LoginOutcome> {
+  return browserApi<LoginOutcome>("/api/v1/auth/login/verify", {
+    method: "POST",
+    body: { code },
+  });
+}
+
 /** Solicita un token de registro por email (respuesta anti-enumeración). */
 export function requestRegistration(email: string): Promise<unknown> {
   return browserApi<unknown>("/api/v1/auth/register/request", {

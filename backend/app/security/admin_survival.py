@@ -72,6 +72,16 @@ def effective_coverage(session: Session, user_id: UUID) -> set[str]:
     return set(session.exec(stmt).all())
 
 
+def user_has_full_admin_coverage(session: Session, user_id: UUID) -> bool:
+    """¿Este usuario activo cubre TODOS los permisos declarados?
+
+    Es el criterio de "administrador con supervivencia": estos usuarios quedan
+    exentos de la verificación de login por correo (garantía anti-bloqueo)."""
+    from backend.app.security.catalog import declared_permissions
+
+    return declared_permissions() <= effective_coverage(session, user_id)
+
+
 def _coverage_by_user(session: Session) -> dict[UUID, set[str]]:
     """Mapa ``user_id → permisos efectivos`` de todos los usuarios activos.
 

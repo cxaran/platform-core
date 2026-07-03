@@ -34,6 +34,7 @@ BACKEND_CANONICAL_TEST_MODULES = (
     "backend.tests.test_system_settings",
     "backend.tests.test_taskiq_app",
     "backend.tests.test_backups",
+    "backend.tests.test_login_verification",
 )
 
 

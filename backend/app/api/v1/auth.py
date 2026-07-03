@@ -11,6 +11,8 @@ from backend.app.schemas.auth import (
     AuthPolicyRead,
     ForgotPasswordRequest,
     LoginRequest,
+    LoginResponse,
+    LoginVerifyRequest,
     MessageResponse,
     RegisterCompleteRequest,
     RegisterRequest,
@@ -21,6 +23,7 @@ from backend.app.schemas.user import SessionUser
 from backend.app.security.rate_limit import (
     limit_forgot_password,
     limit_login,
+    limit_login_verify,
     limit_register_complete,
     limit_register_request,
     limit_reset_password,
@@ -58,13 +61,13 @@ def read_current_user(current_user: CurrentUser) -> SessionUser:
     return current_user
 
 
-@router.post("/login", response_model=MessageResponse)
+@router.post("/login", response_model=LoginResponse)
 async def login(
     payload: LoginRequest,
     request: Request,
     response: Response,
     session: SessionDep,
-) -> MessageResponse:
+) -> LoginResponse:
     limit_login(request, str(payload.email))
     token = await authenticate(session, payload.email, payload.password)
     if token is None:
@@ -73,8 +76,80 @@ async def login(
             detail="Credenciales inválidas",
         )
 
+    # Segundo paso por correo (política en system_settings). SOLO tras validar la
+    # contraseña (anti-enumeración intacta) y NUNCA para usuarios con cobertura
+    # administrativa completa (garantía anti-bloqueo). Bearer no pasa por aquí:
+    # el reto aplica únicamente a la creación de la sesión de navegador.
+    from backend.app.auth.login_verification import (
+        start_login_challenge,
+        user_requires_verification,
+    )
+    from backend.app.auth.security import get_user_by_email
+    from backend.app.services.system_settings_service import login_verification_mode
+
+    mode = login_verification_mode(session)
+    user = get_user_by_email(session, payload.email)
+    if user is not None and user_requires_verification(session, user, mode):
+        sent = await start_login_challenge(session, user, mode, response, request)
+        if not sent:
+            api_error(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "login_verification_email_failed",
+                "No se pudo enviar el correo de verificación. Intenta más tarde.",
+            )
+        return LoginResponse(
+            message=(
+                "Te enviamos un código por correo para confirmar el inicio de sesión."
+                if mode == "code"
+                else "Te enviamos un enlace por correo para confirmar el inicio de sesión."
+            ),
+            verification_required=True,
+            verification_mode=mode,
+        )
+
     set_session_cookie(response, token)
-    return MessageResponse(message="Sesión iniciada correctamente")
+    return LoginResponse(message="Sesión iniciada correctamente")
+
+
+@router.post("/login/verify", response_model=LoginResponse)
+def verify_login(
+    payload: LoginVerifyRequest,
+    request: Request,
+    response: Response,
+    session: SessionDep,
+) -> LoginResponse:
+    """Canjea el secreto del reto (código o token del enlace) por la sesión.
+
+    Exige la cookie del reto del MISMO navegador que inició el login: un enlace
+    reenviado a otro dispositivo no crea sesión ahí. Consumo único y tope de
+    intentos por reto; el error es genérico (no distingue causa)."""
+    from uuid import UUID
+
+    from backend.app.auth.login_verification import (
+        clear_challenge_cookie,
+        verify_login_challenge,
+    )
+    from backend.app.auth.security import create_access_token
+    from backend.app.models.user import User
+    from backend.app.utils.utc_now import utc_now
+
+    limit_login_verify(request)
+    user_id = verify_login_challenge(request, payload.code)
+    user = session.get(User, UUID(user_id)) if user_id else None
+    if (
+        user is None
+        or not user.is_active
+        or (user.locked_until and utc_now() < user.locked_until)
+    ):
+        api_error(
+            status.HTTP_400_BAD_REQUEST,
+            "login_verification_invalid",
+            "Código inválido o expirado. Inicia sesión nuevamente.",
+        )
+
+    clear_challenge_cookie(response)
+    set_session_cookie(response, create_access_token(str(user.id), user.token))
+    return LoginResponse(message="Sesión iniciada correctamente")
 
 
 @router.post("/logout", response_model=MessageResponse)

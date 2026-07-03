@@ -49,6 +49,7 @@ def _serialize_read(session: SessionDep, row: SystemSettings) -> SystemSettingsR
         app_base_url=row.app_base_url,
         app_base_url_verified_at=row.app_base_url_verified_at,
         institution_name=row.institution_name,
+        login_verification_mode=row.login_verification_mode,
         password_reset_enabled=row.password_reset_enabled,
         email_mode=row.email_mode,
         email_from_address=row.email_from_address,
@@ -283,6 +284,20 @@ def update_system_settings(
             "El despliegue no permite registro público (REGISTRATION_ALLOWED). "
             "Actívalo en el entorno antes de habilitarlo aquí.",
         )
+
+    # Activar la verificación de login exige un transporte de correo UTILIZABLE:
+    # sin correo no llegan los códigos y los usuarios sin cobertura administrativa
+    # quedarían fuera (los administradores completos están exentos por diseño).
+    if data.get("login_verification_mode") in ("code", "link"):
+        from backend.app.services.email_service import transport_unavailable_reason
+
+        reason = transport_unavailable_reason(row)
+        if reason is not None:
+            api_error(
+                status.HTTP_409_CONFLICT,
+                "login_verification_requires_email",
+                f"Configura el correo saliente antes de activar la verificación: {reason}",
+            )
 
     # Secretos WRITE-ONLY: valor -> cifrar y reemplazar; null -> borrar; omitido ->
     # conservar. Nunca pasan por setattr (no existen como columnas en claro).

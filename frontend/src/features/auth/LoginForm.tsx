@@ -4,7 +4,7 @@ import { FormEvent, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { ApiRequestError } from "@/core/api/api-error";
-import { browserApi } from "@/core/api/browser-client";
+import { login, verifyLogin } from "@/core/auth/public-auth-client";
 import { AuthAlert, AuthLabel } from "@/features/auth/PublicAuthShell";
 
 // Caja de campo del diseño (LOGIN, MP-CTRL-0127): icono + input transparente en un contenedor
@@ -20,6 +20,19 @@ export function LoginForm() {
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [isPending, startTransition] = useTransition();
+  // Segundo paso por correo (política del sistema): tras credenciales válidas el
+  // backend puede pedir verificación en vez de crear la sesión.
+  const [verification, setVerification] = useState<{
+    mode: "code" | "link";
+    message: string;
+  } | null>(null);
+
+  function finishLogin() {
+    startTransition(() => {
+      router.replace("/");
+      router.refresh();
+    });
+  }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -30,15 +43,12 @@ export function LoginForm() {
     const password = String(formData.get("password") ?? "");
 
     try {
-      await browserApi("/api/v1/auth/login", {
-        method: "POST",
-        body: { email, password },
-      });
-
-      startTransition(() => {
-        router.replace("/");
-        router.refresh();
-      });
+      const outcome = await login(email, password);
+      if (outcome.verification_required && outcome.verification_mode) {
+        setVerification({ mode: outcome.verification_mode, message: outcome.message });
+        return;
+      }
+      finishLogin();
     } catch (caught) {
       if (caught instanceof ApiRequestError) {
         setError(caught.body.message);
@@ -46,6 +56,74 @@ export function LoginForm() {
       }
       setError("No se pudo iniciar sesión");
     }
+  }
+
+  async function onVerify(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    const code = String(new FormData(event.currentTarget).get("code") ?? "");
+    try {
+      await verifyLogin(code);
+      finishLogin();
+    } catch (caught) {
+      if (caught instanceof ApiRequestError) {
+        setError(caught.body.message);
+        return;
+      }
+      setError("No se pudo verificar el inicio de sesión");
+    }
+  }
+
+  if (verification) {
+    return (
+      <form className="space-y-4" onSubmit={onVerify}>
+        <p className="text-sm text-[var(--tx2)]">{verification.message}</p>
+        {verification.mode === "code" ? (
+          <div className="space-y-1.5">
+            <AuthLabel htmlFor="code">Código de verificación</AuthLabel>
+            <div className={FIELD_BOX}>
+              <input
+                id="code"
+                name="code"
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                required
+                autoFocus
+                maxLength={6}
+                placeholder="000000"
+                className={`${FIELD_INPUT} tracking-[0.3em]`}
+              />
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-[var(--tx3)]">
+            Abre el enlace del correo EN ESTE navegador para completar el inicio de
+            sesión. Puedes cerrar esta pestaña.
+          </p>
+        )}
+        {error ? <AuthAlert tone="danger">{error}</AuthAlert> : null}
+        {verification.mode === "code" ? (
+          <button
+            type="submit"
+            disabled={isPending}
+            className="w-full rounded-[13px] bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-[var(--on-accent)] shadow-[var(--soft)] transition hover:brightness-105 disabled:opacity-60"
+          >
+            {isPending ? "Verificando…" : "Verificar"}
+          </button>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => {
+            setVerification(null);
+            setError(null);
+          }}
+          className="w-full text-center text-sm text-[var(--tx3)] transition hover:text-[var(--tx2)]"
+        >
+          Volver a iniciar sesión
+        </button>
+      </form>
+    );
   }
 
   return (

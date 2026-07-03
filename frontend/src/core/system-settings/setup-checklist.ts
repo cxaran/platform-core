@@ -51,6 +51,7 @@ const ITEM_ROUTES: Record<string, string> = {
   registration: "/resources/system_settings",
   domain: "/resources/system_settings",
   email: "/resources/system_settings",
+  login_verification: "/resources/system_settings",
   backups: "/backups",
 };
 

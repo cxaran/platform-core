@@ -332,6 +332,34 @@ class SystemSettingsApiTest(unittest.TestCase):
             assert reason is not None
             self.assertIn("buzón de desarrollo", reason)
 
+    def test_login_verification_mode_patch_and_email_guard(self) -> None:
+        sid = self._settings_id()
+        # Valor fuera del contrato -> 422 (Literal del schema).
+        invalid = self.client.patch(
+            f"/api/v1/system-settings/{sid}", json={"login_verification_mode": "sms"}
+        )
+        self.assertEqual(invalid.status_code, 422)
+
+        # En local (Mailpit utilizable) la activación procede y queda auditada
+        # como nombre de campo.
+        ok = self.client.patch(
+            f"/api/v1/system-settings/{sid}", json={"login_verification_mode": "code"}
+        )
+        self.assertEqual(ok.status_code, 200, ok.text)
+        self.assertEqual(ok.json()["login_verification_mode"], "code")
+
+        # Con el transporte inutilizable (producción apuntando a un buzón de
+        # desarrollo) la activación se rechaza con la causa.
+        self.client.patch(
+            f"/api/v1/system-settings/{sid}", json={"login_verification_mode": "disabled"}
+        )
+        with mock.patch.object(settings, "environment", "production"):
+            blocked = self.client.patch(
+                f"/api/v1/system-settings/{sid}", json={"login_verification_mode": "link"}
+            )
+        self.assertEqual(blocked.status_code, 409, blocked.text)
+        self.assertIn("login_verification_requires_email", blocked.text)
+
     def test_password_reset_policy_reads_database(self) -> None:
         sid = self._settings_id()
         policy = self.client.get("/api/v1/auth/policy").json()

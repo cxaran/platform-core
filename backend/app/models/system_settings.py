@@ -41,6 +41,10 @@ class SystemSettings(Base):
             "email_mode in ('environment', 'smtp', 'resend')",
             name="system_settings_email_mode",
         ),
+        CheckConstraint(
+            "login_verification_mode in ('disabled', 'code', 'link')",
+            name="system_settings_login_verification_mode",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -83,6 +87,18 @@ class SystemSettings(Base):
         String(200),
         nullable=True,
         comment="Nombre de la institución (membrete y encabezados).",
+    )
+
+    login_verification_mode: Mapped[str] = mapped_column(
+        String(10),
+        nullable=False,
+        default="disabled",
+        comment=(
+            "Segundo paso de login verificado por correo: disabled, code (código de "
+            "un solo uso) o link (enlace). Los usuarios con cobertura administrativa "
+            "completa quedan exentos SIEMPRE (garantía anti-bloqueo); los clientes "
+            "Bearer no re-verifican."
+        ),
     )
 
     password_reset_enabled: Mapped[bool] = mapped_column(
