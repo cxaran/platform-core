@@ -23,7 +23,7 @@ def _empty_field_operators() -> dict[str, tuple[Operator, ...]]:
 @dataclass(frozen=True, slots=True)
 class QueryOptions:
     filter_fields: tuple[str, ...] = ()
-    # Tri-estado del sort PÚBLICO (deuda 1 de QUERY_DESIGN_DEBT.md):
+    # Tri-estado del sort PÚBLICO (cubierto por SortFieldsTriStateTest):
     #   None (default)      -> modo derivado: el cliente puede ordenar por todos los
     #                          campos consultables declarados en las demás listas.
     #   ()                  -> modo estricto: sin campos de sort públicos (el

@@ -10,8 +10,12 @@ El motor (commit `bcee760`) usa `QueryOptions` (listas paralelas `filter_fields`
 + `default_sort` + límites `max_*`), `factory.make_offset_query_schema` que genera
 un `OffsetQuerySchema` dinámico e inyecta metadata SQLAlchemy como atributos
 `__query_*__` sobre la clase Pydantic, `compiler.apply_query_schema`,
-`executor.paginate` y `ResourceQuery`. Las deudas A/B/C de `QUERY_DESIGN_DEBT.md`
-se resuelven aquí; la **D (`str_strip_whitespace`) se mantiene heredada** (Decisión 1).
+`executor.paginate` y `ResourceQuery`. Las cuatro deudas del extinto
+`QUERY_DESIGN_DEBT.md` quedaron RESUELTAS (2026-07-03): `sort_fields` tri-estado
+(None/()/allowlist), PK fuera del sort público (tie-breaker + orderable),
+taxonomía `invalid_default_sort` y `str_strip_whitespace` global confirmado como
+contrato. Cobertura: `test_query_sort_roles.py` y `test_query_helpers.py`; el
+registro detallado vive en el historial de git de ese archivo.
 
 **Principio rector:** reorganizar y explicitar sin cambiar el comportamiento
 observable del caso simple. Cada paso deja la suite verde (75/69/6/0) mediante un

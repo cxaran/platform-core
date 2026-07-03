@@ -96,7 +96,7 @@ class LegacyVsNativePkTest(unittest.TestCase):
 
 
 class SortFieldsTriStateTest(unittest.TestCase):
-    """Tri-estado de ``QueryOptions.sort_fields`` (deuda 1 de QUERY_DESIGN_DEBT.md):
+    """Tri-estado de ``QueryOptions.sort_fields``:
     None deriva de los consultables; () es estricto; una tupla es la allowlist."""
 
     def test_none_derives_public_sort_from_queryable_fields(self) -> None:

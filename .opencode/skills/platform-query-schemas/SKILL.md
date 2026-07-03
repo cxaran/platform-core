@@ -54,7 +54,7 @@ today; `QueryPolicy`/`FieldSpec`/`Operator` is the declarative API (Fase 2). The
 factory emits the schema, sets `__query_*__`, and builds a typed immutable
 `CompiledQueryPlan` (`query/plans.py`). The compiler/executor use the explicit
 `plan` when given and fall back to `__query_*__` only when no `plan` is passed.
-Migration tracked in `QUERY_DESIGN_DEBT.md` and `docs/phase-2-query-policy-design.md`.
+Migration tracked in `docs/phase-2-query-policy-design.md`.
 
 ## Adding a list endpoint (recipe)
 
@@ -226,7 +226,7 @@ Hard rules:
 - `QueryOptions` (operational) coexists with `QueryPolicy`/`FieldSpec` (Fase 2,
   declarative). Both are generated today; the compiler falls back to
   `__query_*__` when no `plan` is passed. Do not delete `__query_*__` or
-  `make_offset_query_schema` without coordinating with `QUERY_DESIGN_DEBT.md`.
+  `make_offset_query_schema` while legacy callers remain on that path.
 - Phase 2 migration status (see `docs/phase-2-query-policy-design.md`): Paso 1
   (`FieldSpec`/`QueryPolicy`/`to_policy`), Paso 2 (`CompiledQueryPlan`/
   `compile_list_query`/`plan=` path), Paso 3 (`ListQueryContract` +
