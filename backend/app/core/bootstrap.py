@@ -3,7 +3,10 @@ from sqlmodel import Session, select
 from backend.app.auth.security import generate_token, get_password_hash
 from backend.app.core.database import engine
 from backend.app.core.settings import settings
-from backend.app.bootstrap.service import mark_platform_setup_completed_from_seed
+from backend.app.bootstrap.service import (
+    mark_platform_setup_completed_from_seed,
+    sync_system_admin_role_permissions,
+)
 from backend.app.models.user import Role, RoleAccess, User, UserRole
 from backend.app.security.catalog import declared_permissions
 
@@ -95,6 +98,11 @@ def bootstrap_initial_data() -> None:
             system_admin_role_id=admin_role.id,
             completed_by_user_id=admin_user.id,
         )
+
+        # El rol admin del SISTEMA puede ser el que creó el wizard de setup (no el del
+        # seed); los permisos declarados después de ese setup no le llegan solos.
+        # Reconciliación aditiva: repone los faltantes sin retirar ni reactivar nada.
+        sync_system_admin_role_permissions(session)
 
         session.commit()
 

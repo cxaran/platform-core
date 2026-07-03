@@ -7,7 +7,6 @@ from backend.app.auth.account_lock import unlock_user_by_token
 from backend.app.auth.forgot_password import reset_password, send_password_reset_token
 from backend.app.auth.register import create_user, send_registration_token
 from backend.app.core.database import SessionDep
-from backend.app.core.settings import settings
 from backend.app.schemas.auth import (
     AuthPolicyRead,
     ForgotPasswordRequest,
@@ -27,33 +26,30 @@ from backend.app.security.rate_limit import (
     limit_reset_password,
 )
 
+from backend.app.services.system_settings_service import (
+    is_password_reset_enabled,
+    is_public_registration_enabled,
+)
+
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-def _require_registration_enabled() -> None:
-    if not settings.registration_enabled:
-        api_error(
-            status.HTTP_403_FORBIDDEN,
-            "registration_disabled",
-            "El registro de cuentas no está disponible.",
-        )
-
-
-def _require_password_reset_enabled() -> None:
-    if not settings.password_reset_enabled:
-        api_error(
-            status.HTTP_403_FORBIDDEN,
-            "password_reset_disabled",
-            "La recuperación de contraseña no está disponible.",
-        )
+def _require_enabled(enabled: bool, code: str, message: str) -> None:
+    """403 estable cuando la función de auth está deshabilitada por política."""
+    if not enabled:
+        api_error(status.HTTP_403_FORBIDDEN, code, message)
 
 
 @router.get("/policy", response_model=AuthPolicyRead)
-def read_auth_policy() -> AuthPolicyRead:
-    """Política pública de auth. El frontend la consume; no infiere de settings."""
+def read_auth_policy(session: SessionDep) -> AuthPolicyRead:
+    """Política pública de auth. El frontend la consume; no infiere de settings.
+
+    El registro público es la política EFECTIVA: lo persistido en system_settings
+    (editable por administradores) AND el candado del despliegue.
+    """
     return AuthPolicyRead(
-        registration_enabled=settings.registration_enabled,
-        password_reset_enabled=settings.password_reset_enabled,
+        registration_enabled=is_public_registration_enabled(session),
+        password_reset_enabled=is_password_reset_enabled(session),
     )
 
 
@@ -97,7 +93,11 @@ async def request_registration(
     request: Request,
     session: SessionDep,
 ) -> MessageResponse:
-    _require_registration_enabled()
+    _require_enabled(
+        is_public_registration_enabled(session),
+        "registration_disabled",
+        "El registro de cuentas no está disponible.",
+    )
     limit_register_request(request, str(payload.email))
     await send_registration_token(session, payload.email)
     return MessageResponse(message="Si el email es válido, se enviará un token de registro")
@@ -109,7 +109,11 @@ def complete_registration(
     request: Request,
     session: SessionDep,
 ) -> MessageResponse:
-    _require_registration_enabled()
+    _require_enabled(
+        is_public_registration_enabled(session),
+        "registration_disabled",
+        "El registro de cuentas no está disponible.",
+    )
     limit_register_complete(request)
     user = create_user(session, payload)
     if user is None:
@@ -140,7 +144,11 @@ async def request_password_reset(
     request: Request,
     session: SessionDep,
 ) -> MessageResponse:
-    _require_password_reset_enabled()
+    _require_enabled(
+        is_password_reset_enabled(session),
+        "password_reset_disabled",
+        "La recuperación de contraseña no está disponible.",
+    )
     limit_forgot_password(request, str(payload.email))
     await send_password_reset_token(session, payload.email)
     return MessageResponse(message="Si el email es válido, se enviará un token de recuperación")
@@ -152,7 +160,11 @@ def complete_password_reset(
     request: Request,
     session: SessionDep,
 ) -> MessageResponse:
-    _require_password_reset_enabled()
+    _require_enabled(
+        is_password_reset_enabled(session),
+        "password_reset_disabled",
+        "La recuperación de contraseña no está disponible.",
+    )
     limit_reset_password(request, payload.token)
     user = reset_password(session, payload.email, payload.token, payload.password)
     if user is None:

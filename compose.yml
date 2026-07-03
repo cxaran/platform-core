@@ -55,5 +55,24 @@ services:
     env_file: ${APP_ENV_FILE:-.env}
     command: [ "alembic", "-c", "backend/alembic.ini", "upgrade", "head" ]
 
+  # Tareas en segundo plano (Taskiq sobre PostgreSQL). Worker y scheduler son procesos
+  # PROPIOS con profile explícito "taskiq"; `docker compose up` normal no los levanta.
+  # UNA sola réplica del scheduler.
+  taskiq-worker:
+    image: platform-core-backend:prod
+    profiles: [ "taskiq" ]
+    env_file: ${APP_ENV_FILE:-.env}
+    command: [ "taskiq", "worker", "backend.app.taskiq_app:broker", "--workers", "1", "--max-async-tasks", "1" ]
+    # El primer arranque puede chocar con el scheduler creando la tabla del broker a la
+    # vez (UniqueViolation en pg_type); el reinicio lo absorbe.
+    restart: unless-stopped
+
+  taskiq-scheduler:
+    image: platform-core-backend:prod
+    profiles: [ "taskiq" ]
+    env_file: ${APP_ENV_FILE:-.env}
+    command: [ "taskiq", "scheduler", "backend.app.taskiq_app:scheduler", "--skip-first-run" ]
+    restart: unless-stopped
+
 volumes:
   redis_data:

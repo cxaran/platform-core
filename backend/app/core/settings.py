@@ -86,11 +86,72 @@ class Settings(BaseSettings):
     rate_limit_bootstrap_ip: str = "5/900"
 
     # Política pública de auth. Platform Core no asume signup público: el registro
-    # está deshabilitado por defecto y debe habilitarse explícitamente por ambiente.
+    # está deshabilitado por defecto y debe habilitarse explícitamente.
     # Al completarse un registro, el usuario queda ACTIVO pero SIN roles (sin acceso
     # hasta que un administrador le asigne uno) y SIN sesión automática.
-    registration_enabled: bool = False
-    password_reset_enabled: bool = True
+    # (registration_enabled/password_reset_enabled se retiraron de Settings: la
+    # política vive en system_settings —editable por administradores— y la migración
+    # de siembra importó el valor del entorno una única vez.)
+    # Gate de DESPLIEGUE del registro público: si es False, la política persistida en
+    # system_settings no puede activarse (candado de infraestructura que la UI no
+    # salta). Sin valor explícito: permitido sólo en entorno local. La política
+    # efectiva es (gate AND system_settings.public_registration_enabled).
+    registration_allowed: bool | None = None
+
+    @computed_field
+    @property
+    def registration_allowed_effective(self) -> bool:
+        if self.registration_allowed is not None:
+            return self.registration_allowed
+        return self.environment == "local"
+
+    # Respaldos cifrados hacia Google Drive (una sola cuenta, scope drive.file). El
+    # horario/retención EDITABLES viven en la tabla backup_settings (no aquí); estos
+    # settings son el interruptor global y los secretos de despliegue. Apagado por
+    # defecto: la API y el worker arrancan igual que antes sin configurar nada.
+    # KILL-SWITCH del tick de respaldos (no un paso de instalación): el interruptor
+    # real es backup_settings.enabled, editable en la UI. Apagar esto detiene el
+    # procesamiento aunque la política diga lo contrario (emergencias).
+    backups_enabled: bool = True
+    # DEPRECADA como política: backup_settings.explorer_enabled (DB, editable) es la
+    # fuente de verdad; la migración de siembra importó este valor una única vez.
+    backup_explorer_enabled: bool = False
+    backup_temp_dir: str = "/tmp/platform-core-backups"
+    backup_run_lease_minutes: int = 120
+    backup_max_attempts: int = 3
+    # OAuth de la app de Google (web application). El client secret NUNCA se persiste
+    # en PostgreSQL ni se loguea; sólo vive en el .env del despliegue (la alternativa
+    # es capturarlo en la UI: se guarda cifrado en backup_settings).
+    google_drive_client_id: str | None = None
+    google_drive_client_secret: SecretStr | None = None
+    google_drive_redirect_uri: str | None = None
+
+    # Clave Fernet que cifra en reposo secretos guardados en la base (p. ej. el
+    # refresh token de Google Drive). Legada: la CLAVE MAESTRA nueva es
+    # ``app_encryption_key``; esta se conserva en la cadena de descifrado para no
+    # romper despliegues previos.
+    backup_token_encryption_key: SecretStr | None = None
+
+    # CLAVE MAESTRA ÚNICA de cifrado de secretos de configuración (Fernet). Escribe
+    # todo lo nuevo; las claves legadas (backup_token) siguen descifrando material
+    # viejo (re-cifrado perezoso al reescribir). Generar:
+    #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    app_encryption_key: SecretStr | None = None
+
+    @model_validator(mode="after")
+    def _require_encryption_key_in_production(self) -> Self:
+        if self.environment == "production" and not any(
+            key is not None
+            for key in (
+                self.app_encryption_key,
+                self.backup_token_encryption_key,
+            )
+        ):
+            raise ValueError(
+                "Producción requiere APP_ENCRYPTION_KEY (clave Fernet) para cifrar "
+                "secretos de configuración en reposo."
+            )
+        return self
 
     postgres_user: str
     postgres_password: str

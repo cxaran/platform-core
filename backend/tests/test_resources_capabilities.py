@@ -214,7 +214,6 @@ class ResourceRelationsTest(unittest.TestCase):
         with _As("users:read", "users:manage_roles"):
             users = client.get("/api/v1/resources/users").json()
         relation = next(r for r in users["relations"] if r["name"] == "roles")
-        self.assertEqual(relation["cardinality"], "multiple")
         self.assertTrue(relation["editable"])
         self.assertEqual(relation["selection_url"], "/api/v1/users/{id}/roles")
         self.assertEqual(relation["mutation_method"], "PUT")
@@ -280,9 +279,13 @@ class ResourceActionContractTest(unittest.TestCase):
         self.assertFalse(confirmation["required"])
         self.assertFalse(confirmation["destructive"])
 
-    def test_revoke_sessions_has_no_fixed_body(self) -> None:
+    def test_revoke_sessions_sends_empty_body(self) -> None:
+        # revoke_sessions es POST sin parámetros: publica request.fixed_body == {}
+        # (cuerpo vacío explícito) y nunca input_schema.
         actions = self._users_actions("users:read", "users:revoke_sessions")
-        self.assertNotIn("request", actions["revoke_sessions"])
+        revoke = actions["revoke_sessions"]
+        self.assertEqual(revoke["request"]["fixed_body"], {})
+        self.assertNotIn("input_schema", revoke)
 
     def test_update_actions_absent_without_update_permission(self) -> None:
         actions = self._users_actions("users:read")
@@ -348,7 +351,7 @@ class PermissionsCatalogTest(unittest.TestCase):
         with _As("permissions:read"):
             groups = client.get("/api/v1/permissions").json()
         names = [group["name"] for group in groups]
-        self.assertEqual(names, ["users", "roles", "permissions"])
+        self.assertEqual(names, ["users", "roles", "permissions", "system_settings", "backups", "audit_events"])
         for group in groups:
             self.assertTrue(group["label"])
             for permission in group["permissions"]:
@@ -381,7 +384,6 @@ class ResourcesOpenApiTest(unittest.TestCase):
             "ActionSuccessBehavior",
             "ResourceRelationCapability",
             "RelationOptionsSource",
-            "RelationCardinality",
             "OptionsSourceType",
             "FieldValueType",
             "WidgetType",

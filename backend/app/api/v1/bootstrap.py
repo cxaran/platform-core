@@ -105,13 +105,11 @@ def initialize_bootstrap(
 
 
 def _catalog_read() -> BootstrapCatalogRead:
-    groups: list[BootstrapPermissionGroupRead] = []
-    for group in SECURITY_GROUPS:
-        group_name = _group_name(group.__name__)
-        groups.append(
+    return BootstrapCatalogRead(
+        permission_groups=[
             BootstrapPermissionGroupRead(
-                name=group_name,
-                label=_group_label(group_name),
+                name=group.group_name(),
+                label=group.group_label(),
                 permissions=[
                     BootstrapPermissionRead(
                         access=permission.permission,
@@ -121,9 +119,8 @@ def _catalog_read() -> BootstrapCatalogRead:
                     for permission in group
                 ],
             )
-        )
-    return BootstrapCatalogRead(
-        permission_groups=groups,
+            for group in SECURITY_GROUPS
+        ],
         limits=BootstrapLimitsRead(max_additional_roles=MAX_ADDITIONAL_ROLES),
     )
 
@@ -140,6 +137,9 @@ def _payload_to_input(payload: BootstrapInitializeRequest) -> BootstrapInitializ
             label=payload.system_admin_role.label,
             description=payload.system_admin_role.description,
         ),
+        public_registration_enabled=payload.public_registration_enabled,
+        password_reset_enabled=payload.password_reset_enabled,
+        institution_name=payload.institution_name,
         additional_roles=[
             BootstrapAdditionalRoleInput(
                 name=role.name,
@@ -159,20 +159,3 @@ def _raise_bootstrap_error(exc: BootstrapError) -> None:
         else 422
     )
     api_error(status_code, exc.code, exc.message)
-
-
-def _group_name(class_name: str) -> str:
-    singular = class_name.removesuffix("Permissions").lower()
-    return {
-        "user": "users",
-        "role": "roles",
-        "permission": "permissions",
-    }.get(singular, singular)
-
-
-def _group_label(group_name: str) -> str:
-    return {
-        "users": "Usuarios",
-        "roles": "Roles",
-        "permissions": "Permisos",
-    }.get(group_name, group_name.capitalize())

@@ -49,6 +49,15 @@ class PlatformSetup(Base):
         nullable=True,
         comment="Origen del cierre: bootstrap de producto o instalacion legacy.",
     )
+    onboarding_dismissed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime,
+        nullable=True,
+        comment=(
+            "Momento (UTC) en que el administrador descartó el checklist de "
+            "configuración post-bootstrap (el checklist en sí es DERIVADO del "
+            "estado real, nunca persiste progreso propio)."
+        ),
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         server_default=func.now(),

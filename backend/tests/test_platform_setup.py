@@ -35,6 +35,7 @@ os.environ.update(DEV_ENV)
 
 from backend.app.auth.security import verify_password  # noqa: E402
 from backend.app.bootstrap.service import (  # noqa: E402
+    sync_system_admin_role_permissions,
     BootstrapAdditionalRoleInput,
     BootstrapError,
     BootstrapInitializeInput,
@@ -171,6 +172,73 @@ class PlatformSetupServiceTest(unittest.TestCase):
                 initialize_platform(session, self._payload())
 
         self.assertEqual(caught.exception.code, "bootstrap_unavailable")
+
+    def test_initialize_applies_initial_policy_to_system_settings(self) -> None:
+        from dataclasses import replace
+
+        from backend.app.models.system_settings import SystemSettings
+
+        engine = self._engine()
+        with Session(engine) as session:
+            payload = replace(
+                self._payload(),
+                public_registration_enabled=True,
+                password_reset_enabled=False,
+                institution_name="  Empresa Norte  ",
+            )
+            initialize_platform(session, payload)
+            session.commit()
+
+            row = session.exec(select(SystemSettings)).one()
+            self.assertTrue(row.public_registration_enabled)
+            self.assertFalse(row.password_reset_enabled)
+            self.assertEqual(row.institution_name, "Empresa Norte")
+
+    def test_sync_system_admin_role_adds_permissions_declared_after_setup(self) -> None:
+        engine = self._engine()
+        with Session(engine) as session:
+            result = initialize_platform(session, self._payload())
+            session.commit()
+
+            # Simula un permiso declarado DESPUÉS del setup (fila ausente: se repone) y
+            # uno desactivado por un administrador (se respeta, no se reactiva).
+            removed = session.exec(
+                select(RoleAccess).where(
+                    RoleAccess.role_id == result.system_admin_role.id,
+                    RoleAccess.access == "audit_events:read",
+                )
+            ).one()
+            session.delete(removed)
+            disabled = session.exec(
+                select(RoleAccess).where(
+                    RoleAccess.role_id == result.system_admin_role.id,
+                    RoleAccess.access == "permissions:read",
+                )
+            ).one()
+            disabled.is_active = False
+            session.commit()
+
+            added = sync_system_admin_role_permissions(session)
+            session.commit()
+
+            accesses = {
+                access.access: access.is_active
+                for access in session.exec(
+                    select(RoleAccess).where(
+                        RoleAccess.role_id == result.system_admin_role.id
+                    )
+                ).all()
+            }
+
+        self.assertEqual(added, 1)
+        self.assertTrue(accesses["audit_events:read"])  # repuesto
+        self.assertFalse(accesses["permissions:read"])  # respetado (no se reactiva)
+        self.assertEqual(set(accesses), declared_permissions())
+
+    def test_sync_without_system_admin_role_is_noop(self) -> None:
+        engine = self._engine()
+        with Session(engine) as session:
+            self.assertEqual(sync_system_admin_role_permissions(session), 0)
 
 
 if __name__ == "__main__":

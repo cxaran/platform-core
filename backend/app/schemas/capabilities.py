@@ -16,7 +16,7 @@ Reglas del contrato:
 from enum import Enum
 from typing import Any, Optional
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from backend.app.schemas.base import ApiReadSchema
 
@@ -29,6 +29,7 @@ class FieldValueType(str, Enum):
     DECIMAL = "decimal"
     BOOLEAN = "boolean"
     DATE = "date"
+    TIME = "time"
     DATETIME = "datetime"
     ENUM = "enum"
     ARRAY = "array"
@@ -42,10 +43,13 @@ class WidgetType(str, Enum):
     TEXTAREA = "textarea"
     MULTISELECT = "multiselect"
     SELECT = "select"
+    NUMBER = "number"
     # Controles de fecha de calendario (filtros de fecha de C1). El frontend envía un
     # literal ``YYYY-MM-DD`` (nunca ``new Date()``/``toISOString()``).
     DATE = "date"
     DATERANGE = "daterange"
+    DATETIME = "datetime"
+    TIME = "time"
 
 
 class FilterOperator(str, Enum):
@@ -69,10 +73,9 @@ class FilterValueShape(str, Enum):
     SINGLE = "single"
     # Rango con dos extremos declarados en ``parameters`` (p. ej. ``between``).
     RANGE = "range"
-    # Múltiples valores (p. ej. ``in``).
-    MULTIPLE = "multiple"
-    # Sin valor (p. ej. ``isnull``): el operador es la condición.
-    NONE = "none"
+    # Nota: "multiple" y "none" se retiraron — los operadores in/isnull están
+    # excluidos a propósito del contrato filtrable visible, así que esas formas
+    # eran inalcanzables y obligaban al frontend a narrowing de casos imposibles.
 
 
 class HttpMethod(str, Enum):
@@ -84,7 +87,10 @@ class HttpMethod(str, Enum):
 
 
 class ActionScope(str, Enum):
-    RESOURCE = "resource"
+    # Sólo acciones por ITEM: el valor "resource" (acciones a nivel de recurso) se
+    # retiró — ningún recurso lo producía y el frontend no tenía render para él
+    # (habría sido un botón fantasma). Si algún día hace falta, se construye con
+    # su superficie de UI a la par.
     ITEM = "item"
 
 
@@ -92,9 +98,6 @@ class ResourceView(str, Enum):
     TABLE = "table"
     GROUPED_CATALOG = "grouped_catalog"
 
-
-class RelationCardinality(str, Enum):
-    MULTIPLE = "multiple"
 
 
 class OptionsSourceType(str, Enum):
@@ -120,17 +123,6 @@ class ResourceFieldCapability(ApiReadSchema):
 class ResourceFilterOption(ApiReadSchema):
     value: str
     label: str
-
-
-class ResourceFilterCapability(ApiReadSchema):
-    field: str
-    parameter: str
-    operator: FilterOperator
-    label: str
-    description: Optional[str] = None
-    type: FieldValueType
-    widget: WidgetType
-    options: Optional[list[ResourceFilterOption]] = None
 
 
 class FilterableRangeParameters(ApiReadSchema):
@@ -198,11 +190,10 @@ class SortCapability(ApiReadSchema):
 
 class ResourceListCapability(ApiReadSchema):
     fields: list[ResourceFieldCapability]
-    # Filtros visibles heredados (un control por campo). Se conserva por compatibilidad;
-    # el contrato completo y declarativo de filtros vive en ``filterable_fields``.
-    filters: list[ResourceFilterCapability] = []
-    # Contrato aditivo de filtros declarativos (C1): por campo, los operadores que
-    # expone con su forma de valor, widget y parámetros.
+    # Contrato declarativo ÚNICO de filtros: por campo, los operadores que expone con
+    # su forma de valor, widget y parámetros. (El contrato legacy ``filters`` se
+    # retiró: derivaba solo de ui.filter manual y dejaba al copiloto sin los
+    # operadores automáticos del plan.)
     filterable_fields: list[FilterableFieldCapability] = []
     pagination: PaginationCapability
     search: SearchCapability
@@ -220,12 +211,43 @@ class ResourceFormFieldCapability(ApiReadSchema):
     # editables; el indicador deja el contrato preparado para campos de solo lectura.
     editable: bool = True
     widget: Optional[WidgetType] = None
+    # Opciones cerradas de un campo de selección (enum o ``ui.options``), con la misma
+    # forma ``{value, label}`` que los filtros. ``None`` cuando el campo no declara un
+    # universo de opciones (texto libre, número, fecha, etc.). El ``value`` se serializa
+    # como string aunque el tipo real sea entero/booleano (misma convención que filtros).
+    options: Optional[list[ResourceFilterOption]] = None
+
+
+class FormTransport(str, Enum):
+    # Cuerpo JSON estándar (default, retrocompatible).
+    JSON = "json"
+    # ``multipart/form-data``: el formulario incluye un archivo. El frontend NO debe
+    # enviar JSON; los campos de metadata viajan como campos de formulario y el binario
+    # en ``file_field``.
+    MULTIPART = "multipart"
+
+
+class ResourceFileFieldCapability(ApiReadSchema):
+    """Campo de archivo de un formulario multipart (genérico, sin semántica de dominio).
+
+    El frontend usa ``accepted_mime_types`` y ``max_size_bytes`` solo como guía de UI; el
+    backend revalida tamaño y tipo en cada carga."""
+
+    name: str
+    label: str
+    accepted_mime_types: list[str]
+    max_size_bytes: int
+    required: bool
 
 
 class ResourceFormCapability(ApiReadSchema):
     method: HttpMethod
     url_template: str
     fields: list[ResourceFormFieldCapability]
+    # ``transport``/``file_field`` describen un formulario con carga de archivo. Para los
+    # formularios JSON normales ``transport`` es ``json`` y ``file_field`` se omite.
+    transport: FormTransport = FormTransport.JSON
+    file_field: Optional[ResourceFileFieldCapability] = None
 
 
 class ResourceFormsCapability(ApiReadSchema):
@@ -257,6 +279,84 @@ class ActionConfirmation(ApiReadSchema):
     destructive: bool
 
 
+class ActionInputSchema(ApiReadSchema):
+    """Formulario declarado de entrada de una acción (B2).
+
+    Sólo se publica cuando la acción declara un ``input_schema`` (en vez de un cuerpo
+    fijo). Reusa exactamente la misma proyección de formularios que ``create``/``update``:
+    cada campo es un ``ResourceFormFieldCapability`` (label, tipo, widget, obligatoriedad
+    y opciones). Nunca se serializan defaults, validadores ni la clase Python."""
+
+    fields: list[ResourceFormFieldCapability]
+
+
+class ActionConditionOperator(str, Enum):
+    """Operadores del DSL serializable de condiciones (``visible_when``/``enabled_when``).
+
+    Es un contrato de datos, no un lenguaje evaluable: nunca se publican expresiones,
+    JavaScript, Python ni lambdas."""
+
+    EQ = "eq"
+    NEQ = "neq"
+    IN = "in"
+    NOT_IN = "not_in"
+    IS_NULL = "is_null"
+    NOT_NULL = "not_null"
+
+
+class ActionConditionPredicate(ApiReadSchema):
+    """Predicado atómico: compara el campo ``field`` del item con ``value``.
+
+    ``value`` es escalar para ``eq``/``neq``, una lista para ``in``/``not_in`` y se
+    omite para ``is_null``/``not_null``. La validez se comprueba al construir el
+    predicado (en el registro de la acción), no al evaluarlo."""
+
+    field: str
+    operator: ActionConditionOperator
+    value: Optional[Any] = None
+
+    @model_validator(mode="after")
+    def _validate_shape(self) -> "ActionConditionPredicate":
+        if not self.field or not self.field.strip():
+            raise ValueError("El predicado de condición requiere un 'field' no vacío.")
+        op = self.operator
+        if op in (ActionConditionOperator.EQ, ActionConditionOperator.NEQ):
+            if self.value is None:
+                raise ValueError(
+                    f"El operador '{op.value}' requiere un 'value'."
+                )
+        elif op in (ActionConditionOperator.IN, ActionConditionOperator.NOT_IN):
+            if not isinstance(self.value, list) or len(self.value) == 0:
+                raise ValueError(
+                    f"El operador '{op.value}' requiere un 'value' de lista no vacía."
+                )
+        else:  # is_null / not_null
+            if self.value is not None:
+                raise ValueError(
+                    f"El operador '{op.value}' no admite 'value'."
+                )
+        return self
+
+
+class ActionCondition(ApiReadSchema):
+    """Condición de estado de una acción: conjunción (``all``) de predicados.
+
+    Sólo se soporta ``all`` (todos los predicados deben cumplirse). El permiso es una
+    propiedad aparte (``permission`` en el registro) y nunca se expresa aquí. El backend
+    sigue siendo la autoridad final: si el frontend no puede evaluar la condición, debe
+    comportarse de forma conservadora."""
+
+    # ``all`` es builtin de Python: el atributo se llama ``all_`` y se serializa/valida
+    # como ``all`` vía alias (con ``populate_by_name`` se construye con cualquiera).
+    all_: list[ActionConditionPredicate] = Field(alias="all")
+
+    @model_validator(mode="after")
+    def _validate_non_empty(self) -> "ActionCondition":
+        if not self.all_:
+            raise ValueError("La condición 'all' no puede estar vacía.")
+        return self
+
+
 class ResourceActionCapability(ApiReadSchema):
     name: str
     label: str
@@ -265,8 +365,16 @@ class ResourceActionCapability(ApiReadSchema):
     scope: ActionScope
     danger: bool
     request: Optional[ActionRequestSpec] = None
+    # Formulario de entrada (B2). Excluyente con ``request``: una acción declara un
+    # cuerpo fijo o un formulario, nunca ambos.
+    input_schema: Optional[ActionInputSchema] = None
     confirmation: Optional[ActionConfirmation] = None
     success_behavior: ActionSuccessBehavior = ActionSuccessBehavior.REFRESH
+    # Condiciones de estado (B3). ``visible_when``: si no se cumple, la acción no se
+    # muestra. ``enabled_when``: si no se cumple, se muestra deshabilitada. Ambas son el
+    # DSL serializable; el permiso se filtra antes (la acción ni siquiera se proyecta).
+    visible_when: Optional[ActionCondition] = None
+    enabled_when: Optional[ActionCondition] = None
 
 
 class RelationOptionsSource(ApiReadSchema):
@@ -289,7 +397,6 @@ class ResourceRelationCapability(ApiReadSchema):
     name: str
     label: str
     description: Optional[str] = None
-    cardinality: RelationCardinality
     required: bool
     editable: bool
     selection_url: str
@@ -322,6 +429,32 @@ class ResourceDetailCapability(ApiReadSchema):
     url_template: str
 
 
+class ResourceFileDownloadCapability(ApiReadSchema):
+    """Descarga de contenido binario de un item (navegación de archivo, no mutación).
+
+    Genérico: cualquier recurso con contenido descargable la declara. Se proyecta solo
+    si el actor tiene el permiso de descarga (distinto del de lectura de metadata). El
+    backend revalida permiso y visibilidad y entrega el binario con cabeceras seguras."""
+
+    method: HttpMethod
+    url_template: str
+
+
+class ResourceRelatedListCapability(ApiReadSchema):
+    """Lista RELACIONADA navegable por item (p. ej. signos vitales de una consulta).
+
+    Es navegación de solo lectura, no un editor: el frontend enlaza a la lista del
+    recurso destino con ``parameter_name=<valor de la referencia del item>`` (el
+    filtro EQ ya publicado por ``filterable_fields`` del destino). Se proyecta solo
+    si el actor tiene el permiso de LECTURA del recurso destino."""
+
+    # Nombre REGISTRADO del recurso destino (clave de /api/v1/resources).
+    resource: str
+    label: str
+    # Query param del filtro EQ del recurso destino que recibe el id del item.
+    parameter_name: str
+
+
 class ResourceCapability(ApiReadSchema):
     name: str
     label: str
@@ -329,9 +462,15 @@ class ResourceCapability(ApiReadSchema):
     view: ResourceView
     item_reference: Optional[ItemReference] = None
     detail: Optional[ResourceDetailCapability] = None
+    # Descarga de binario por item (recursos con contenido de archivo). Omitido si el
+    # recurso no declara descarga o el actor no tiene el permiso.
+    file_download: Optional[ResourceFileDownloadCapability] = None
     # El atributo se llama ``list_`` para no sombrear el builtin ``list`` dentro del
     # cuerpo de la clase; se serializa/valida como ``list`` vía alias.
     list_: Optional[ResourceListCapability] = Field(default=None, alias="list")
     forms: Optional[ResourceFormsCapability] = None
     actions: list[ResourceActionCapability] = []
     relations: list[ResourceRelationCapability] = []
+    # Listas relacionadas navegables por item, filtradas por permiso de lectura del
+    # recurso destino.
+    related_lists: list[ResourceRelatedListCapability] = []

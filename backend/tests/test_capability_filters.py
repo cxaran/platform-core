@@ -62,63 +62,26 @@ class _As:
         app.dependency_overrides.pop(get_current_user, None)
 
 
-class ResourceFiltersTest(unittest.TestCase):
+class LegacyFiltersRemovedTest(unittest.TestCase):
+    """El contrato legacy ``filters`` se RETIRÓ: filterable_fields es la fuente única
+    (el legacy derivaba solo de ui.filter manual y dejaba al copiloto sin los
+    operadores automáticos del plan)."""
+
     def _capability(self, resource: str, *permissions: str) -> dict:
         with _As(*permissions):
             response = client.get(f"/api/v1/resources/{resource}")
         self.assertEqual(response.status_code, 200)
         return response.json()
 
-    def test_users_publishes_only_is_active_filter(self) -> None:
-        filters = self._capability("users", "users:read")["list"]["filters"]
-        self.assertEqual([f["field"] for f in filters], ["is_active"])
+    def test_legacy_filters_absent_from_payload(self) -> None:
+        cap = self._capability("users", "users:read")
+        self.assertNotIn("filters", cap["list"])
 
-    def test_roles_publishes_only_is_active_filter(self) -> None:
-        filters = self._capability("roles", "roles:read")["list"]["filters"]
-        self.assertEqual([f["field"] for f in filters], ["is_active"])
-
-    def test_filter_shape_is_complete(self) -> None:
-        flt = self._capability("users", "users:read")["list"]["filters"][0]
-        self.assertEqual(flt["parameter"], "is_active")
-        self.assertEqual(flt["operator"], "eq")
-        self.assertEqual(flt["label"], "Estado")
-        self.assertEqual(flt["type"], "boolean")
-        self.assertEqual(flt["widget"], "select")
-        self.assertEqual(
-            flt["options"],
-            [
-                {"value": "true", "label": "Activos"},
-                {"value": "false", "label": "Inactivos"},
-            ],
-        )
-
-    def test_options_have_explicit_labels(self) -> None:
-        flt = self._capability("roles", "roles:read")["list"]["filters"][0]
-        for option in flt["options"]:
-            self.assertTrue(option["label"].strip())
-            self.assertTrue(option["value"])
-
-    def test_email_is_not_a_filter(self) -> None:
-        filters = self._capability("users", "users:read")["list"]["filters"]
-        self.assertNotIn("email", [f["field"] for f in filters])
-
-    def test_parameter_exists_in_query_schema(self) -> None:
-        users = self._capability("users", "users:read")["list"]
-        roles = self._capability("roles", "roles:read")["list"]
-        for parameter in (f["parameter"] for f in users["filters"]):
-            self.assertIn(parameter, USERS.Query.model_fields)
-        for parameter in (f["parameter"] for f in roles["filters"]):
-            self.assertIn(parameter, ROLES.Query.model_fields)
-
-    def test_filter_operator_is_within_field_operators(self) -> None:
+    def test_plan_fields_are_filterable_including_email(self) -> None:
+        # Cambio de semántica vs el legacy: el contrato único publica TODO campo del
+        # plan compilado (email incluido); el legacy solo mostraba ui.filter manual.
         cap = self._capability("users", "users:read")["list"]
-        field_ops = {field["name"]: field["filter_operators"] for field in cap["fields"]}
-        for flt in cap["filters"]:
-            self.assertIn(flt["operator"], field_ops[flt["field"]])
-
-    def test_visible_as_filter_absent_from_payload(self) -> None:
-        blob = self._capability("users", "users:read")
-        self.assertNotIn("visible_as_filter", str(blob))
+        self.assertIn("email", {f["key"] for f in cap["filterable_fields"]})
 
     def test_permission_filtering_preserved(self) -> None:
         with _As("users:read"):
@@ -217,6 +180,75 @@ class FilterableFieldsTest(unittest.TestCase):
         self.assertEqual(list(fields.keys()), ["name", "is_active", "created_at"])
         self.assertNotIn("id", fields)
 
+    def test_date_field_publishes_equality_and_range_bounds(self) -> None:
+        # Un campo ``date`` en ``filter_fields`` publica AUTOMÁTICAMENTE igualdad por
+        # día (``eq``) + extremos de rango ``gte``/``lte`` (un solo valor cada uno,
+        # widget de fecha). En fechas, los extremos llevan la zona en que el cliente
+        # interpreta las fechas civiles (default UTC en tests). Ningún recurso del
+        # core tiene columna ``date``, así que se verifica con un recurso sintético.
+        from datetime import date
+
+        from pydantic import Field
+        from sqlalchemy import Date, Integer
+        from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+        from backend.app.query import QueryOptions, ResourceQuery
+        from backend.app.resources import projection
+        from backend.app.resources.registry import ResourceDefinition
+        from backend.app.schemas.base import ApiReadSchema
+        from backend.app.schemas.capabilities import ResourceView
+        from backend.app.security.groups.users import UserPermissions
+
+        class Base(DeclarativeBase):
+            pass
+
+        class Booking(Base):
+            __tablename__ = "filterable_date_booking"
+
+            id: Mapped[int] = mapped_column(Integer, primary_key=True)
+            scheduled_date: Mapped[date] = mapped_column(Date, nullable=False)
+
+        class BookingListItem(ApiReadSchema):
+            id: int = Field(title="ID")
+            scheduled_date: date = Field(
+                title="Fecha", json_schema_extra={"ui": {"list": True}}
+            )
+
+        definition = ResourceDefinition(
+            name="synth_bookings",
+            label="Reservas",
+            api_path="/api/v1/synth-bookings",
+            view=ResourceView.TABLE,
+            read_permission=UserPermissions.READ,
+            list_query=ResourceQuery(
+                name="SynthBookingQuery",
+                model=Booking,
+                schema=BookingListItem,
+                options=QueryOptions(
+                    filter_fields=("scheduled_date",),
+                    sort_fields=("scheduled_date",),
+                    default_sort="scheduled_date",
+                ),
+            ),
+            list_schema=BookingListItem,
+        )
+        list_cap = projection._list_capability(definition).model_dump(
+            exclude_none=True, by_alias=True
+        )
+        fields = self._fields_by_key(list_cap)
+        scheduled = fields["scheduled_date"]
+        self.assertEqual(scheduled["value_type"], "date")
+        ops = self._by_key(scheduled)
+        self.assertEqual(list(ops.keys()), ["eq", "gte", "lte"])
+        self.assertEqual(ops["eq"]["parameter_name"], "scheduled_date")
+        self.assertEqual(ops["eq"]["widget"], "date")
+        self.assertEqual(ops["gte"]["parameter_name"], "scheduled_date_gte")
+        self.assertEqual(ops["gte"]["widget"], "date")
+        self.assertEqual(ops["gte"]["value_shape"], "single")
+        self.assertEqual(ops["gte"]["calendar_timezone"], "UTC")
+        self.assertEqual(ops["lte"]["parameter_name"], "scheduled_date_lte")
+        self.assertEqual(ops["lte"]["calendar_timezone"], "UTC")
+
 
 class FiltersOpenApiTest(unittest.TestCase):
     def setUp(self) -> None:
@@ -224,7 +256,9 @@ class FiltersOpenApiTest(unittest.TestCase):
 
     def test_filter_schemas_present(self) -> None:
         schemas = self.openapi["components"]["schemas"]
-        self.assertIn("ResourceFilterCapability", schemas)
+        # El schema legacy se retiró del contrato; las opciones se conservan
+        # (las usan filterable_fields y los formularios).
+        self.assertNotIn("ResourceFilterCapability", schemas)
         self.assertIn("ResourceFilterOption", schemas)
 
     def test_filterable_fields_schemas_present(self) -> None:

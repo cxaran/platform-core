@@ -8,6 +8,15 @@ ENV PYTHONPATH=/app
 
 WORKDIR /app
 
+# Herramientas de RESPALDO (misma imagen para API, worker y scheduler):
+# - postgresql-client (v17 en trixie): pg_dump/pg_restore sirven contra el Postgres 16
+#   del stack (pg_dump debe ser >= a la versión del servidor). Sin repos externos.
+# - age: cifrado del archivo de respaldo con la clave PÚBLICA del administrador (la
+#   privada nunca entra a la imagen ni al repositorio).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-client age \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 

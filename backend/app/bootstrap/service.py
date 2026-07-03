@@ -60,6 +60,10 @@ class BootstrapInitializeInput:
     user: BootstrapUserInput
     system_admin_role: BootstrapRoleInput = field(default_factory=BootstrapRoleInput)
     additional_roles: list[BootstrapAdditionalRoleInput] = field(default_factory=list)
+    # Política inicial de plataforma (sin secretos de terceros).
+    public_registration_enabled: bool = False
+    password_reset_enabled: bool = True
+    institution_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -149,11 +153,48 @@ def initialize_platform(session: Session, payload: BootstrapInitializeInput) -> 
     )
     session.flush()
 
+    # Decisiones de POLÍTICA del asistente → singleton de configuración del sistema
+    # (la migración ya sembró la fila; aquí sólo se actualiza).
+    from backend.app.services.system_settings_service import apply_bootstrap_choices
+
+    apply_bootstrap_choices(
+        session,
+        public_registration_enabled=payload.public_registration_enabled,
+        institution_name=payload.institution_name,
+        password_reset_enabled=payload.password_reset_enabled,
+    )
+    session.flush()
+
     return BootstrapInitializeResult(
         user=user,
         system_admin_role=system_admin_role,
         additional_roles=additional_roles,
     )
+
+
+def sync_system_admin_role_permissions(session: Session) -> int:
+    """Reconcilia el rol admin del SISTEMA con el catálogo de permisos declarados.
+
+    El wizard de setup concede al rol admin todos los permisos declarados EN ESE MOMENTO; los
+    declarados después (recursos o acciones nuevos) no llegan solos a una instalación ya
+    inicializada y la función queda muda para el admin. La reconciliación es ADITIVA:
+    inserta sólo los permisos sin fila para el rol; no retira permisos ni reactiva filas
+    desactivadas por un administrador. Devuelve cuántos agregó.
+    """
+    setup = ensure_platform_setup(session)
+    if setup.system_admin_role_id is None:
+        return 0
+    role = session.get(Role, setup.system_admin_role_id)
+    if role is None or not role.is_active:
+        return 0
+    existing = set(
+        session.exec(select(RoleAccess.access).where(RoleAccess.role_id == role.id)).all()
+    )
+    missing = sorted(declared_permissions() - existing)
+    for permission in missing:
+        session.add(RoleAccess(role_id=role.id, access=permission, is_active=True))
+    session.flush()
+    return len(missing)
 
 
 def mark_platform_setup_completed_from_seed(

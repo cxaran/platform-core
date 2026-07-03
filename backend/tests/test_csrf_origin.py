@@ -31,7 +31,7 @@ DEV_ENV = {
 
 os.environ.update(DEV_ENV)
 
-from pydantic import ValidationError  # noqa: E402
+from pydantic import SecretStr, ValidationError  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from backend.app.auth.auth_dependencies import get_current_user  # noqa: E402
@@ -128,6 +128,7 @@ class SettingsOriginsValidationTest(unittest.TestCase):
             environment="production",
             trusted_browser_origins="https://app.example.com",
             bootstrap_setup_token="valid-bootstrap-token-123",
+            app_encryption_key=SecretStr("x" * 44),
             **BASE_SETTINGS,
         )
         self.assertEqual(settings.trusted_origins, frozenset({"https://app.example.com:443"}))

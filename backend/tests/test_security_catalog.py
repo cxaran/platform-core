@@ -30,17 +30,26 @@ DEV_ENV = {
 os.environ.update(DEV_ENV)
 
 from backend.app.security.catalog import SECURITY_GROUPS  # noqa: E402
+from backend.app.security.groups.audit_events import AuditEventPermissions  # noqa: E402
+from backend.app.security.groups.backups import BackupPermissions  # noqa: E402
 from backend.app.security.groups.permissions import PermissionPermissions  # noqa: E402
 from backend.app.security.groups.roles import RolePermissions  # noqa: E402
+from backend.app.security.groups.system_settings import SystemSettingsPermissions  # noqa: E402
 from backend.app.security.groups.users import UserPermissions  # noqa: E402
-from backend.app.security.security_control import SecurityControl  # noqa: E402
 
 
 class SecurityCatalogTest(unittest.TestCase):
     def test_catalog_exposes_expected_groups(self) -> None:
         self.assertEqual(
             SECURITY_GROUPS,
-            [UserPermissions, RolePermissions, PermissionPermissions],
+            [
+                UserPermissions,
+                RolePermissions,
+                PermissionPermissions,
+                SystemSettingsPermissions,
+                BackupPermissions,
+                AuditEventPermissions,
+            ],
         )
 
     def test_catalog_exposes_expected_permissions(self) -> None:
@@ -61,6 +70,11 @@ class SecurityCatalogTest(unittest.TestCase):
                 "roles:delete",
                 "roles:manage_permissions",
                 "permissions:read",
+                "system_settings:read",
+                "system_settings:configure",
+                "backups:read",
+                "backups:configure",
+                "audit_events:read",
             ],
         )
 
@@ -69,10 +83,15 @@ class SecurityCatalogTest(unittest.TestCase):
 
         self.assertEqual(len(permissions), len(set(permissions)))
 
+    def test_groups_expose_name_and_label(self) -> None:
+        self.assertEqual(UserPermissions.group_name(), "users")
+        self.assertEqual(UserPermissions.group_label(), "Usuarios")
+        self.assertEqual(AuditEventPermissions.group_name(), "audit_events")
+        self.assertEqual(AuditEventPermissions.group_label(), "Registros de auditoría")
+
     def test_permission_members_expose_control_and_description(self) -> None:
         permission = UserPermissions.READ
 
-        self.assertIsInstance(permission.access, SecurityControl)
         self.assertEqual(permission.permission, "users:read")
         self.assertEqual(permission.description, "Listar usuarios")
         self.assertTrue(callable(permission.check))

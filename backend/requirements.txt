@@ -13,12 +13,30 @@ fastapi-mail==1.6.5
 python-multipart==0.0.32
 redis==8.0.0
 
+# Cliente HTTP server-side: verificación de dominio por nonce y transporte Resend.
+httpx==0.28.1
+
+# Tareas en segundo plano: broker Taskiq sobre PostgreSQL (canal/tabla propios; el
+# broker usa psycopg v3 vía el extra [psycopg], el resto del backend sigue en psycopg2).
+taskiq==0.12.4
+taskiq-postgres[psycopg]==0.8.0
+
+# Respaldos hacia Google Drive (OAuth de una sola cuenta, scope drive.file).
+google-auth==2.43.0
+google-auth-oauthlib==1.2.2
+google-auth-httplib2==0.4.0
+google-api-python-client==2.187.0
+
 # Base IANA de zonas horarias para zoneinfo (semántica de calendario de filtros de
 # fecha). Garantiza disponibilidad en Windows y en la imagen slim, sin depender del
 # tzdata del sistema.
 tzdata==2026.2
 
 argon2-cffi==25.1.0
+
+# Cifrado simétrico (Fernet) de secretos de configuración en reposo
+# (services/secret_cipher.py): SMTP/Resend, tokens de Google Drive.
+cryptography==49.0.0
 
 # Elige una estrategia JWT principal:
 PyJWT[crypto]==2.13.0

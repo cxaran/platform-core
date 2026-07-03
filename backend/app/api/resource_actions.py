@@ -23,8 +23,6 @@ from backend.app.utils.utc_now import utc_now
 
 TModel = TypeVar("TModel")
 TReadSchema = TypeVar("TReadSchema", bound=ApiReadSchema)
-TWriteSchema = TypeVar("TWriteSchema", bound=ApiWriteSchema)
-TPatchSchema = TypeVar("TPatchSchema", bound=ApiPatchSchema)
 
 
 def api_error(
@@ -91,6 +89,91 @@ def get_or_404(
     return entity
 
 
+def require_status(
+    entity: Any,
+    allowed: tuple[Any, ...],
+    message: str,
+    *,
+    code: str = "resource_state_conflict",
+) -> None:
+    """El estado de la entidad debe ser uno de los permitidos; si no, 409."""
+    if entity.status not in allowed:
+        api_error(status.HTTP_409_CONFLICT, code, message)
+
+
+def get_active_or_404(
+    session: Session,
+    model: type[TModel],
+    object_id: Any,
+    message: str,
+    *,
+    code: str = "resource_not_found",
+    allowed_status: tuple[Any, ...] | None = None,
+    status_message: str | None = None,
+    status_code: str = "resource_state_conflict",
+) -> TModel:
+    """Entidad existente y sin baja lógica (``deleted_at``); una eliminada responde 404.
+
+    ``allowed_status`` añade la guarda de estado (409 ``resource_state_conflict``),
+    p. ej. exigir que un registro siga en estado ``draft``."""
+    entity = get_or_404(session, model, object_id, message, code=code)
+    if getattr(entity, "deleted_at", None) is not None:
+        api_error(status.HTTP_404_NOT_FOUND, code, message)
+    if allowed_status is not None:
+        require_status(entity, allowed_status, status_message or message, code=status_code)
+    return entity
+
+
+def lock_for_update(session: Session, model: type[TModel], object_id: Any) -> TModel | None:
+    """Toma la fila con FOR UPDATE (serializa transiciones concurrentes); ``None`` si no existe."""
+    mapper = inspect(model)
+    assert mapper is not None  # todo modelo ORM registrado es inspeccionable
+    pk = mapper.primary_key[0]
+    stmt = select(model).where(pk == object_id).with_for_update()
+    return session.exec(stmt).first()
+
+
+def lock_active_or_404(
+    session: Session,
+    model: type[TModel],
+    object_id: Any,
+    message: str,
+    *,
+    code: str = "resource_not_found",
+    allowed_status: tuple[Any, ...] | None = None,
+    status_message: str | None = None,
+    status_code: str = "resource_state_conflict",
+) -> TModel:
+    """Variante bloqueante de :func:`get_active_or_404` (FOR UPDATE sobre la fila)."""
+    entity = lock_for_update(session, model, object_id)
+    if entity is None or getattr(entity, "deleted_at", None) is not None:
+        api_error(status.HTTP_404_NOT_FOUND, code, message)
+    if allowed_status is not None:
+        require_status(entity, allowed_status, status_message or message, code=status_code)
+    return entity
+
+
+def get_owned_or_404(
+    session: Session,
+    model: type[TModel],
+    object_id: Any,
+    owner_id: Any,
+    message: str,
+    *,
+    owner_field: str = "user_id",
+    code: str = "resource_not_found",
+) -> TModel:
+    """Entidad vigente del dueño o 404 (no revela la existencia de recursos ajenos)."""
+    entity = session.get(model, object_id)
+    if (
+        entity is None
+        or getattr(entity, "deleted_at", None) is not None
+        or getattr(entity, owner_field) != owner_id
+    ):
+        api_error(status.HTTP_404_NOT_FOUND, code, message)
+    return entity
+
+
 def serialize(schema: type[TReadSchema], entity: Any) -> TReadSchema:
     return schema.model_validate(entity, from_attributes=True)
 
@@ -116,7 +199,7 @@ def serialize_with(
 def create_entity(
     session: Session,
     model: type[TModel],
-    payload: TWriteSchema,
+    payload: ApiWriteSchema,
     *,
     exclude: set[str] | None = None,
     values: dict[str, Any] | None = None,
@@ -135,7 +218,7 @@ def create_entity(
 def patch_entity(
     session: Session,
     entity: TModel,
-    payload: TPatchSchema,
+    payload: ApiPatchSchema,
     *,
     actor_id: Any | None = None,
     rotate_token_fields: tuple[str, ...] = (),
@@ -196,6 +279,39 @@ def deactivate_entity(
         setattr(entity, token_field, token_factory())
     touch_entity(entity, actor_id)
     _persist(session, entity, commit=commit, conflict_message=inactive_message, conflict_code=inactive_code)
+    return entity
+
+
+def soft_delete_entity(
+    session: Session,
+    entity: TModel,
+    *,
+    actor_id: Any | None = None,
+    deleted_at_field: str = "deleted_at",
+    deleted_by_field: str = "deleted_by",
+    commit: bool = True,
+    already_deleted_message: str,
+    already_deleted_code: str = "resource_state_conflict",
+) -> TModel:
+    """Baja lógica para recursos clínicos con ``deleted_at``/``deleted_by``.
+
+    A diferencia de :func:`deactivate_entity` (que voltea ``is_active`` en la capa
+    de identidad), aquí se marca la eliminación con su marca temporal y autor, que
+    es la convención de borrado de los recursos de dominio. Es idempotente-seguro:
+    si el registro ya está eliminado responde el conflicto estándar."""
+    if getattr(entity, deleted_at_field) is not None:
+        api_error(status.HTTP_409_CONFLICT, already_deleted_code, already_deleted_message)
+    setattr(entity, deleted_at_field, utc_now())
+    if actor_id is not None and hasattr(entity, deleted_by_field):
+        setattr(entity, deleted_by_field, actor_id)
+    touch_entity(entity, actor_id)
+    _persist(
+        session,
+        entity,
+        commit=commit,
+        conflict_message=already_deleted_message,
+        conflict_code=already_deleted_code,
+    )
     return entity
 
 
@@ -307,18 +423,20 @@ def list_child_values(
     owner_field: str,
     owner_id: Any,
     value_field: str,
+    active_field: str | None = None,
 ) -> list[Any]:
     """Lee los valores escalares de un hijo para un dueño.
 
     Lado lectura simétrico a ``replace_child_values`` (p. ej. los permisos
-    ``RoleAccess.access`` de un rol). Devuelve la lista de valores.
+    ``RoleAccess.access`` de un rol). Con ``active_field`` sólo devuelve las filas
+    activas — misma regla que los checks de sesión, para que lo que la UI muestra
+    coincida con lo que la sesión otorga.
     """
     column = getattr(child_model, value_field)
-    return list(
-        session.exec(
-            select(column).where(getattr(child_model, owner_field) == owner_id)
-        ).all()
-    )
+    statement = select(column).where(getattr(child_model, owner_field) == owner_id)
+    if active_field is not None:
+        statement = statement.where(getattr(child_model, active_field).is_(True))
+    return list(session.exec(statement).all())
 
 
 def ensure_allowed_values(

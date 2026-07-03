@@ -175,7 +175,7 @@ class BootstrapRoutesTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual(body["limits"], {"max_additional_roles": 10})
-        self.assertEqual([group["name"] for group in body["permission_groups"]], ["users", "roles", "permissions"])
+        self.assertEqual([group["name"] for group in body["permission_groups"]], ["users", "roles", "permissions", "system_settings", "backups", "audit_events"])
         self.assertIn("users:read", {item["access"] for group in body["permission_groups"] for item in group["permissions"]})
 
         with Session(self.engine) as session:
@@ -251,13 +251,19 @@ class BootstrapRoutesTest(unittest.TestCase):
 
     def test_production_requires_valid_bootstrap_setup_token(self) -> None:
         with self.assertRaises(ValidationError):
-            Settings(environment="production", **BASE_SETTINGS)
+            Settings(environment="production", app_encryption_key=SecretStr("x" * 44), **BASE_SETTINGS)
         with self.assertRaises(ValidationError):
-            Settings(environment="production", bootstrap_setup_token="short", **BASE_SETTINGS)
+            Settings(
+                environment="production",
+                bootstrap_setup_token="short",
+                app_encryption_key=SecretStr("x" * 44),
+                **BASE_SETTINGS,
+            )
 
         settings = Settings(
             environment="production",
             bootstrap_setup_token="valid-bootstrap-token-123",
+            app_encryption_key=SecretStr("x" * 44),
             **BASE_SETTINGS,
         )
         self.assertEqual(settings.bootstrap_setup_token.get_secret_value(), "valid-bootstrap-token-123")

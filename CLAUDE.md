@@ -44,6 +44,7 @@ alembic -c backend/alembic.ini upgrade head
 # Full stack
 docker compose -f compose.dev.yml up --build                    # dev: postgres + mailpit + backend
 docker compose -f compose.dev.yml --profile migrate up migrate  # run migrations in-container
+docker compose -f compose.dev.yml --profile taskiq up taskiq-worker taskiq-scheduler  # background jobs
 docker compose up --build                                       # prod stack
 ```
 
@@ -54,13 +55,22 @@ Mailpit dev UI (captured outgoing email): http://localhost:8025.
 ## Architecture
 
 ### Settings & config
-`app/core/settings.py` — a single Pydantic `Settings` (cached via `settings = get_settings()`) reads **all** config from environment variables. There are no defaults for secrets/DB/SMTP, so the app fails to import without a complete env. `postgres_dsn` and `mail_config` are computed fields. Tests and `compose.dev.yml` document the full required env var set.
+`app/core/settings.py` — a single Pydantic `Settings` (cached via `settings = get_settings()`) reads **all** config from environment variables. There are no defaults for secrets/DB/SMTP, so the app fails to import without a complete env. `postgres_dsn` and `mail_config` are computed fields. Tests and `compose.dev.yml` document the full required env var set. `scripts/install.sh` generates a production `.env` with unique random secrets (never overwrites an existing one).
+
+Editable runtime policy lives in the DB, not in env vars: the `system_settings` singleton (`app/models/system_settings.py` + `app/services/system_settings_service.py`) holds public registration, verified base domain, institution name, password reset and the outgoing-mail transport (environment/SMTP/Resend, secrets Fernet-encrypted write-only). Env vars keep only deployment GATES the UI cannot bypass (`REGISTRATION_ALLOWED` → `registration_allowed_effective`). A derived setup checklist (`build_setup_checklist`) is served at `/system-settings/setup-checklist` and rendered as a dismissible banner on the dashboard.
+
+Secrets at rest are encrypted with `app/services/secret_cipher.py`: `APP_ENCRYPTION_KEY` (Fernet) is the single master key (required in production); legacy `BACKUP_TOKEN_ENCRYPTION_KEY` stays in the decrypt chain (lazy re-encryption on rewrite).
+
+Domain verification: `POST /system-settings/{id}/verify-domain` fetches `GET /domain-challenge/{nonce}` THROUGH the candidate domain and compares an HMAC of the nonce; on success the origin is persisted and ADDED to the CSRF allowlist at runtime (`app/core/runtime_origins.py` — it only adds, never replaces env origins).
+
+Config changes are audited via `app/services/config_audit.py` into the append-only `audit_events` table with FIELD NAMES ONLY (never values), and `audit_events` is exposed as a read-only queryable resource under the dedicated `audit_events:read` permission.
 
 ### Models & DB (note the SQLAlchemy / SQLModel split)
 - Models in `app/models/user.py` use **SQLAlchemy 2.0** `DeclarativeBase` (`app/models/base.py`) with `Mapped[...]` / `mapped_column`. Alembic autogenerate targets `Base.metadata`.
 - But `app/core/database.py` hands out **`sqlmodel.Session`** (`SessionDep`). So the ORM models are plain SQLAlchemy while the session type comes from SQLModel — keep new models on the SQLAlchemy `Base`, not `SQLModel`.
-- Core tables: `User`, `Role`, `UserRole` (M2M), `RoleAccess` (permission strings attached to a role). UUID PKs, soft-delete via `is_active`, audit columns (`created_at`/`updated_at`/`updated_by`).
-- Alembic migrations live in `backend/alembic/versions/`.
+- Core tables: `User`, `Role`, `UserRole` (M2M), `RoleAccess` (permission strings attached to a role). UUID PKs, soft-delete via `is_active`, audit columns (`created_at`/`updated_at`/`updated_by`). Platform tables: `platform_setup`, `system_settings` (singleton), `audit_events` (append-only), `backup_settings`/`backup_oauth_states`/`backup_runs`.
+- Enums persist as NON-native enums (`native_enum=False` → VARCHAR + CHECK; see `app/models/enums.py`). Size the VARCHAR to the longest value.
+- Alembic migrations live in `backend/alembic/versions/`. The Taskiq broker table is NOT migrated (the broker creates it).
 
 ### Authentication (`app/auth/`)
 - Password hashing: argon2 via passlib (`app/auth/security.py`). `verify_dummy_password` equalizes timing when a user doesn't exist.
@@ -92,6 +102,11 @@ The `app/query/` engine turns a public read schema + ORM model + `QueryOptions` 
 
 ### Routing status
 All feature routers are mounted (`api/v1/router.py`): `auth`, `permissions` (catalog read), `roles` (CRUD + permissions), `users` (self-service `/me`) and `users_admin` (admin CRUD + roles + revoke-sessions). `users` + `users_admin` share the `/users` prefix (self-service `/me` included first). Routers build list endpoints with `ResourceQuery` and the **general route helpers** in `api/resource_actions.py` (CRUD/relation/serialize/error helpers — keep one-off logic out of routers). `test_auth_routes.py` asserts `/auth/refresh` and `/auth/logout` are absent from the OpenAPI schema — keep it green when adding/removing routes.
+
+### Background jobs & backups
+- **Taskiq over PostgreSQL** (`app/taskiq_app.py`; see `docs/background-tasks-taskiq.md`). Worker and scheduler are opt-in Docker services (`--profile taskiq`); FastAPI only starts the broker in its lifespan to PUBLISH tasks, never to run them. Channel/table: `platform_core_taskiq*`.
+- **Encrypted backups to Google Drive** (`app/services/backup_service.py`; see `docs/backups-google-drive.md`): `backups.tick` runs every minute and consults due work in PostgreSQL (`backup_settings.next_run_at`) — the real schedule/retention is DB-edited, not a cron. Pipeline: `pg_dump --snapshot` → `pg_restore --list` verify → tar → OPTIONAL `age` encryption → resumable idempotent Drive upload → local GFS retention. An EXPLORER artifact (readable SQLite from the same snapshot, sensitive columns excluded) can accompany each backup. Frontend: `/backups` (Drive files + settings panel) and `/backups/explore` (sql.js WASM + local age decryption in the browser). The Docker image installs `postgresql-client` and `age`.
+- Kill switch: `BACKUPS_ENABLED` (env); the real policy switch is `backup_settings.enabled` (UI-editable).
 
 ## Language
 Code comments, docstrings, and user-facing API messages are written in **Spanish**. Match that when editing.

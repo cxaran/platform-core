@@ -139,7 +139,9 @@ class CapabilityConfigErrorTest(unittest.TestCase):
         capability = projection._list_capability(
             make_definition(select([{"value": "true", "label": "Activos"}]))
         )
-        self.assertEqual([f.field for f in capability.filters], ["is_active"])
+        field = next(f for f in capability.filterable_fields if f.key == "is_active")
+        eq = next(o for o in field.operators if o.key == "eq")
+        self.assertEqual([o.value for o in (eq.options or [])], ["true"])
 
 
 if __name__ == "__main__":

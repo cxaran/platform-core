@@ -13,6 +13,9 @@ from typing import Optional
 
 from pydantic import BaseModel
 
+from backend.app.models.audit_event import AuditEvent
+from backend.app.models.backup import BackupRun, BackupSettings
+from backend.app.models.system_settings import SystemSettings
 from backend.app.models.user import Role, User
 from backend.app.query import QueryOptions, ResourceQuery
 from backend.app.query.operators import Operator
@@ -34,20 +37,37 @@ _CREATED_AT_OPERATORS = (
     Operator.BETWEEN,
 )
 from backend.app.schemas.capabilities import (
+    ActionCondition,
     ActionScope,
+    FormTransport,
     HttpMethod,
     OptionsSourceType,
-    RelationCardinality,
+    ResourceFileFieldCapability,
     ResourceView,
 )
+from backend.app.schemas.audit_event import AuditEventListItem
+from backend.app.schemas.backup import (
+    BackupRunListItem,
+    BackupSettingsListItem,
+    BackupSettingsUpdate,
+)
 from backend.app.schemas.role import RoleCreate, RoleListItem, RoleRead, RoleUpdate
+from backend.app.schemas.system_settings import (
+    SendTestEmailRequest,
+    SystemSettingsListItem,
+    SystemSettingsUpdate,
+    VerifyDomainRequest,
+)
 from backend.app.schemas.user_admin import (
     UserAdminCreate,
     UserAdminListItem,
     UserAdminUpdate,
 )
+from backend.app.security.groups.audit_events import AuditEventPermissions
+from backend.app.security.groups.backups import BackupPermissions
 from backend.app.security.groups.permissions import PermissionPermissions
 from backend.app.security.groups.roles import RolePermissions
+from backend.app.security.groups.system_settings import SystemSettingsPermissions
 from backend.app.security.groups.users import UserPermissions
 from backend.app.security.security_group import SecurityGroup
 
@@ -101,6 +121,64 @@ ROLES = ResourceQuery(
     ),
 )
 
+BACKUP_SETTINGS = ResourceQuery(
+    name="BackupSettingsQuery",
+    model=BackupSettings,
+    schema=BackupSettingsListItem,
+    options=QueryOptions(
+        # Singleton: la lista devuelve UNA fila; sin filtros ni búsqueda (no hay nada
+        # que filtrar). El orden es irrelevante pero el contrato exige un default.
+        sort_fields=("created_at",),
+        in_fields=("id",),
+        default_sort="created_at",
+    ),
+)
+
+BACKUP_RUNS = ResourceQuery(
+    name="BackupRunQuery",
+    model=BackupRun,
+    schema=BackupRunListItem,
+    options=QueryOptions(
+        # Historial operativo: filtro por estado (enum no nativo, igualdad) y rango de
+        # calendario sobre created_at. Sin búsqueda libre (metadata, no texto).
+        filter_fields=("status", "trigger_kind"),
+        field_operators={"created_at": _CREATED_AT_OPERATORS},
+        sort_fields=("created_at", "finished_at", "file_size_bytes"),
+        in_fields=("id",),
+        default_sort="-created_at",
+    ),
+)
+
+SYSTEM_SETTINGS = ResourceQuery(
+    name="SystemSettingsQuery",
+    model=SystemSettings,
+    schema=SystemSettingsListItem,
+    options=QueryOptions(
+        # Singleton: una fila; sin filtros ni búsqueda.
+        sort_fields=("created_at",),
+        in_fields=("id",),
+        default_sort="created_at",
+    ),
+)
+
+AUDIT_EVENTS = ResourceQuery(
+    name="AuditEventQuery",
+    model=AuditEvent,
+    schema=AuditEventListItem,
+    options=QueryOptions(
+        # Bitácora append-only (sin baja lógica). Filtros por igualdad: ``actor_user_id``
+        # (quién), ``action`` (qué acción), ``entity_type`` y ``entity_id`` (sobre qué
+        # entidad — así se reconstruye el rastro de un registro concreto).
+        # ``occurred_at`` (DateTime) admite rango de calendario. Orden por fecha
+        # descendente por defecto. Sin búsqueda libre (la bitácora no es texto).
+        filter_fields=("actor_user_id", "action", "entity_type", "entity_id"),
+        field_operators={"occurred_at": _CREATED_AT_OPERATORS},
+        sort_fields=("occurred_at",),
+        in_fields=("id",),
+        default_sort="-occurred_at",
+    ),
+)
+
 
 @dataclass(frozen=True)
 class ConfirmationDef:
@@ -121,7 +199,16 @@ class ActionDef:
     ``fixed_body`` declara el cuerpo exacto que el frontend debe enviar (p. ej.
     ``{"is_active": False}`` para reutilizar el PATCH de actualización como
     desactivación). El frontend no puede modificarlo ni reutilizar la acción para
-    otro payload."""
+    otro payload.
+
+    ``input_schema`` declara, en su lugar, un formulario de entrada (un schema Pydantic
+    con ``extra="forbid"``) que el frontend debe presentar y enviar. ``fixed_body`` e
+    ``input_schema`` son excluyentes: una acción tiene cuerpo fijo, o formulario, o
+    ningún cuerpo (jamás los dos).
+
+    ``visible_when``/``enabled_when`` son condiciones de estado (DSL serializable de
+    capabilities) que el frontend usa como guía; el backend revalida siempre. El permiso
+    nunca se expresa en estas condiciones: es la propiedad ``permission``."""
 
     name: str
     label: str
@@ -131,7 +218,23 @@ class ActionDef:
     danger: bool
     permission: SecurityGroup
     fixed_body: Optional[dict[str, object]] = None
+    input_schema: Optional[type[BaseModel]] = None
     confirmation: Optional[ConfirmationDef] = None
+    visible_when: Optional[ActionCondition] = None
+    enabled_when: Optional[ActionCondition] = None
+
+    def __post_init__(self) -> None:
+        # Falla temprano (al definir el recurso), no al proyectar la capability.
+        if self.fixed_body is not None and self.input_schema is not None:
+            raise ValueError(
+                f"La acción '{self.name}' no puede declarar 'fixed_body' e 'input_schema' a la vez."
+            )
+        if self.input_schema is not None:
+            extra = self.input_schema.model_config.get("extra")
+            if extra != "forbid":
+                raise ValueError(
+                    f"El input_schema de la acción '{self.name}' debe usar extra='forbid'."
+                )
 
 
 @dataclass(frozen=True)
@@ -147,7 +250,6 @@ class RelationDef:
     name: str
     label: str
     description: Optional[str]
-    cardinality: RelationCardinality
     required: bool
     selection_url_template: str
     # Campo de la respuesta de ``selection_url`` que contiene la lista de valores
@@ -165,6 +267,20 @@ class RelationDef:
 
 
 @dataclass(frozen=True)
+class RelatedListDef:
+    """Lista relacionada navegable por item (p. ej. las corridas de un proceso).
+
+    ``resource`` es el nombre REGISTRADO del recurso destino y ``filter_field`` su
+    campo de filtro EQ (debe estar en los ``filter_fields`` del destino) que recibe
+    el id del item dueño. La proyección la publica solo si el actor tiene el permiso
+    de lectura del recurso destino; es navegación de solo lectura, no un editor."""
+
+    resource: str
+    label: str
+    filter_field: str
+
+
+@dataclass(frozen=True)
 class ResourceDefinition:
     name: str
     label: str
@@ -177,13 +293,22 @@ class ResourceDefinition:
     update_schema: Optional[type[BaseModel]] = None
     create_permission: Optional[SecurityGroup] = None
     update_permission: Optional[SecurityGroup] = None
+    # Transporte del formulario de creación. ``MULTIPART`` declara una carga de archivo:
+    # ``create_file_field`` describe el campo de archivo (genérico). Los campos de
+    # metadata siguen proyectándose desde ``create_schema``.
+    create_transport: FormTransport = FormTransport.JSON
+    create_file_field: Optional[ResourceFileFieldCapability] = None
+    # Descarga de binario por item. Si se declara, el recurso publica ``file_download``
+    # cuando el actor tiene ``download_permission`` (distinto del de lectura).
+    download_url_template: Optional[str] = None
+    download_permission: Optional[SecurityGroup] = None
     # Lectura individual: si está declarada, el recurso publica ``item_reference`` y
-    # ``detail``. El campo identificador (``item_id_field``) coincide con el token
+    # ``detail``. El campo identificador (el id del item (invariante ``id``)) coincide con el token
     # ``{id}`` de las plantillas de URL (detail, update, acciones).
     detail_url_template: Optional[str] = None
-    item_id_field: str = "id"
     actions: tuple[ActionDef, ...] = ()
     relations: tuple[RelationDef, ...] = ()
+    related_lists: tuple[RelatedListDef, ...] = ()
 
 
 RESOURCE_REGISTRY: tuple[ResourceDefinition, ...] = (
@@ -245,6 +370,9 @@ RESOURCE_REGISTRY: tuple[ResourceDefinition, ...] = (
                 scope=ActionScope.ITEM,
                 danger=True,
                 permission=UserPermissions.REVOKE_SESSIONS,
+                # POST sin parámetros: cuerpo vacío explícito ({}) para que el cliente
+                # capability-driven envíe un JSON válido y nunca reciba 422.
+                fixed_body={},
                 confirmation=ConfirmationDef(
                     title="Revocar sesiones",
                     message="Se cerrarán todas las sesiones activas del usuario.",
@@ -273,7 +401,6 @@ RESOURCE_REGISTRY: tuple[ResourceDefinition, ...] = (
                 name="roles",
                 label="Roles",
                 description="Roles asignados al usuario",
-                cardinality=RelationCardinality.MULTIPLE,
                 required=False,
                 selection_url_template="/api/v1/users/{id}/roles",
                 selection_field=None,
@@ -356,7 +483,6 @@ RESOURCE_REGISTRY: tuple[ResourceDefinition, ...] = (
                 name="permissions",
                 label="Permisos",
                 description="Permisos asignados al rol",
-                cardinality=RelationCardinality.MULTIPLE,
                 required=False,
                 selection_url_template="/api/v1/roles/{id}/permissions",
                 selection_field="permissions",
@@ -370,6 +496,162 @@ RESOURCE_REGISTRY: tuple[ResourceDefinition, ...] = (
                 permission=RolePermissions.MANAGE_PERMISSIONS,
             ),
         ),
+    ),
+    ResourceDefinition(
+        name="system_settings",
+        label="Configuración del sistema",
+        api_path="/api/v1/system-settings",
+        view=ResourceView.TABLE,
+        read_permission=SystemSettingsPermissions.READ,
+        list_query=SYSTEM_SETTINGS,
+        list_schema=SystemSettingsListItem,
+        # Singleton editable: sin create ni delete; el update usa el PATCH del detail.
+        update_schema=SystemSettingsUpdate,
+        update_permission=SystemSettingsPermissions.CONFIGURE,
+        detail_url_template="/api/v1/system-settings/{id}",
+        actions=(
+            ActionDef(
+                name="verify_domain",
+                label="Verificar dominio",
+                method=HttpMethod.POST,
+                url_template="/api/v1/system-settings/{id}/verify-domain",
+                scope=ActionScope.ITEM,
+                danger=False,
+                permission=SystemSettingsPermissions.CONFIGURE,
+                input_schema=VerifyDomainRequest,
+                confirmation=ConfirmationDef(
+                    title="Verificar dominio",
+                    message=(
+                        "Se comprobará que el dominio sirve esta instalación y se "
+                        "usará para calcular las URLs de OAuth."
+                    ),
+                    confirm_label="Verificar",
+                    destructive=False,
+                    required=False,
+                ),
+            ),
+            ActionDef(
+                name="send_test_email",
+                label="Enviar correo de prueba",
+                method=HttpMethod.POST,
+                url_template="/api/v1/system-settings/{id}/send-test-email",
+                scope=ActionScope.ITEM,
+                danger=False,
+                permission=SystemSettingsPermissions.CONFIGURE,
+                input_schema=SendTestEmailRequest,
+                confirmation=ConfirmationDef(
+                    title="Correo de prueba",
+                    message="Se enviará un correo real con el transporte configurado.",
+                    confirm_label="Enviar",
+                    destructive=False,
+                    required=False,
+                ),
+            ),
+        ),
+    ),
+    ResourceDefinition(
+        name="backup_settings",
+        label="Configuración de respaldos",
+        api_path="/api/v1/backup-settings",
+        view=ResourceView.TABLE,
+        read_permission=BackupPermissions.READ,
+        list_query=BACKUP_SETTINGS,
+        list_schema=BackupSettingsListItem,
+        # Singleton editable: sin create ni delete; el update usa el PATCH del detail.
+        update_schema=BackupSettingsUpdate,
+        update_permission=BackupPermissions.CONFIGURE,
+        detail_url_template="/api/v1/backup-settings/{id}",
+        actions=(
+            ActionDef(
+                name="connect_drive",
+                fixed_body={},
+                label="Conectar Google Drive",
+                method=HttpMethod.POST,
+                url_template="/api/v1/backup-settings/{id}/connect-drive",
+                scope=ActionScope.ITEM,
+                danger=False,
+                permission=BackupPermissions.CONFIGURE,
+            ),
+            ActionDef(
+                name="disconnect_drive",
+                fixed_body={},
+                label="Desconectar Google Drive",
+                method=HttpMethod.POST,
+                url_template="/api/v1/backup-settings/{id}/disconnect-drive",
+                scope=ActionScope.ITEM,
+                danger=True,
+                permission=BackupPermissions.CONFIGURE,
+                confirmation=ConfirmationDef(
+                    title="Desconectar Google Drive",
+                    message=(
+                        "Se olvidará la conexión y los respaldos quedarán deshabilitados. "
+                        "Los archivos ya subidos y el historial se conservan."
+                    ),
+                    confirm_label="Desconectar",
+                    destructive=True,
+                ),
+            ),
+            ActionDef(
+                name="generate_encryption_key",
+                fixed_body={},
+                label="Generar clave de cifrado",
+                method=HttpMethod.POST,
+                url_template="/api/v1/backup-settings/{id}/generate-encryption-key",
+                scope=ActionScope.ITEM,
+                danger=False,
+                permission=BackupPermissions.CONFIGURE,
+                confirmation=ConfirmationDef(
+                    title="Generar clave de cifrado",
+                    message=(
+                        "Se generará una clave de cifrado para los respaldos y la clave "
+                        "PRIVADA se enviará a tu correo — guárdala: es la única forma de "
+                        "abrir los respaldos cifrados. Reemplaza cualquier clave anterior."
+                    ),
+                    confirm_label="Generar y enviar por correo",
+                    destructive=False,
+                ),
+            ),
+            ActionDef(
+                name="run_now",
+                fixed_body={},
+                label="Respaldar ahora",
+                method=HttpMethod.POST,
+                url_template="/api/v1/backup-settings/{id}/run-now",
+                scope=ActionScope.ITEM,
+                danger=False,
+                permission=BackupPermissions.CONFIGURE,
+                confirmation=ConfirmationDef(
+                    title="Respaldo manual",
+                    message="Se encolará un respaldo hacia Google Drive.",
+                    confirm_label="Respaldar",
+                    destructive=False,
+                ),
+            ),
+        ),
+    ),
+    ResourceDefinition(
+        name="backup_runs",
+        label="Historial de respaldos",
+        api_path="/api/v1/backup-runs",
+        view=ResourceView.TABLE,
+        # SÓLO LECTURA: el historial lo escribe el worker; sin create/update/delete.
+        read_permission=BackupPermissions.READ,
+        list_query=BACKUP_RUNS,
+        list_schema=BackupRunListItem,
+        detail_url_template="/api/v1/backup-runs/{id}",
+    ),
+    ResourceDefinition(
+        name="audit_events",
+        label="Registros de auditoría",
+        api_path="/api/v1/audit-events",
+        view=ResourceView.TABLE,
+        # Recurso SÓLO LECTURA: no declara create_schema/update_schema ni acciones (la
+        # bitácora es append-only). El gate es el permiso dedicado de auditoría
+        # (audit_events:read).
+        read_permission=AuditEventPermissions.READ,
+        list_query=AUDIT_EVENTS,
+        list_schema=AuditEventListItem,
+        detail_url_template="/api/v1/audit-events/{id}",
     ),
     ResourceDefinition(
         name="permissions",

@@ -92,6 +92,40 @@ services:
       redis:
         condition: service_healthy
 
+  # Tareas en segundo plano (Taskiq sobre PostgreSQL). Worker y scheduler con profile
+  # explícito "taskiq" (docker compose --profile taskiq up taskiq-worker taskiq-scheduler);
+  # `docker compose up` normal no los levanta. UNA sola réplica del scheduler.
+  taskiq-worker:
+    image: platform-core-backend:dev
+    profiles: [ "taskiq" ]
+    env_file: ${APP_ENV_FILE:-.env}
+    environment:
+      <<: *backend-environment
+    command: [ "taskiq", "worker", "backend.app.taskiq_app:broker", "--workers", "1", "--max-async-tasks", "1" ]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app/backend
+    # Primer arranque: worker y scheduler pueden correr a la vez el CREATE TABLE IF NOT
+    # EXISTS del broker y Postgres lanza UniqueViolation en pg_type (carrera conocida);
+    # el reinicio la absorbe (la tabla ya existe en el segundo intento).
+    restart: unless-stopped
+
+  taskiq-scheduler:
+    image: platform-core-backend:dev
+    profiles: [ "taskiq" ]
+    env_file: ${APP_ENV_FILE:-.env}
+    environment:
+      <<: *backend-environment
+    command: [ "taskiq", "scheduler", "backend.app.taskiq_app:scheduler", "--skip-first-run" ]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app/backend
+    restart: unless-stopped
+
   frontend:
     build:
       context: ./frontend
