@@ -10,14 +10,16 @@
     "dev": "next dev -H 0.0.0.0",
     "build": "next build",
     "start": "next start -H 0.0.0.0",
+    "dev:docker": "next dev --webpack -H 0.0.0.0",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test:bootstrap": "node --no-warnings --import ./scripts/test-register.mjs --test src/core/bootstrap/bootstrap-form.test.ts",
     "test:actions": "node --no-warnings --import ./scripts/test-register.mjs --test src/core/resources/resource-action.test.ts",
     "test:public-auth": "node --no-warnings --import ./scripts/test-register.mjs --test src/core/auth/public-auth.test.ts",
     "test:filters": "node --no-warnings --import ./scripts/test-register.mjs --test src/core/resources/filterable.test.ts",
+    "test:push": "node --no-warnings --import ./scripts/test-register.mjs --test src/core/push/push-support.test.ts",
     "test:e2e:bootstrap": "node scripts/run-e2e-bootstrap.mjs",
-    "check:canonical": "npm run check:api && npm run lint && npm run typecheck && npm run test:bootstrap && npm run test:actions && npm run test:public-auth && npm run test:filters && npm run test:list-query && npm run test:detail-view && npm run test:resource-form && npm run test:export-rows && npm run test:checklist && npm run test:backups && npm run build",
+    "check:canonical": "npm run check:api && npm run lint && npm run typecheck && npm run test:bootstrap && npm run test:actions && npm run test:public-auth && npm run test:filters && npm run test:push && npm run test:list-query && npm run test:detail-view && npm run test:resource-form && npm run test:export-rows && npm run test:checklist && npm run test:backups && npm run test:agent && npm run build",
     "generate:api": "node scripts/generate-openapi.mjs",
     "check:api": "node scripts/generate-openapi.mjs --check",
     "test:list-query": "node --no-warnings --import ./scripts/test-register.mjs --test src/core/resources/list-query.test.ts",
@@ -25,7 +27,8 @@
     "test:resource-form": "node --no-warnings --import ./scripts/test-register.mjs --test src/core/resources/resource-form.test.ts",
     "test:export-rows": "node --no-warnings --import ./scripts/test-register.mjs --test src/components/resources/export/build-export-rows.test.ts",
     "test:checklist": "node --no-warnings --import ./scripts/test-register.mjs --test src/core/system-settings/setup-checklist.test.ts",
-    "test:backups": "node --no-warnings --import ./scripts/test-register.mjs --test src/core/backups/drive-files.test.ts src/core/backups/explorer-db.test.ts"
+    "test:backups": "node --no-warnings --import ./scripts/test-register.mjs --test src/core/backups/drive-files.test.ts src/core/backups/explorer-db.test.ts",
+    "test:agent": "node --no-warnings --import ./scripts/test-register.mjs --test src/core/agent/tools/contract-tools.test.ts src/core/agent/turn-reducer.test.ts src/core/agent/turn-error.test.ts src/core/agent/reconnect-machine.test.ts src/core/agent/usage-cost.test.ts src/core/agent/context-window.test.ts src/core/agent/agent-client.test.ts"
   },
   "dependencies": {
     "@tailwindcss/postcss": "4.3.1",

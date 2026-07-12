@@ -6,7 +6,7 @@ x-backend-environment: &backend-environment
   # Orígenes de navegador confiables para CSRF. Por defecto solo localhost; para probar
   # desde otro dispositivo en la LAN, exporta TRUSTED_BROWSER_ORIGINS incluyendo el
   # origen LAN (p. ej. "http://localhost:3000,http://192.168.0.213:3000").
-  TRUSTED_BROWSER_ORIGINS: ${TRUSTED_BROWSER_ORIGINS:-http://localhost:3000}
+  TRUSTED_BROWSER_ORIGINS: ${TRUSTED_BROWSER_ORIGINS:-http://localhost:3000,http://localhost:8080}
   ACCESS_TOKEN_EXPIRE_MINUTES: "30"
   EMAIL_TOKEN_EXPIRE_MINUTES: "30"
   TRYS_BEFORE_LOCK: "5"
@@ -27,6 +27,15 @@ x-backend-environment: &backend-environment
   POSTGRES_SERVER: postgres
   POSTGRES_PORT: "5432"
   POSTGRES_DB: platform_core
+  # Clave maestra de cifrado de secretos en reposo (Fernet). SOLO PARA DESARROLLO:
+  # producción genera la suya en la instalación. Necesaria para guardar credenciales
+  # de proveedor de IA (el cifrado es fail-closed).
+  APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:-maIG4L7m1vq_o0xdlzCoDifuhJl1sGtUaeQX_DeeeY8=}
+  # Agent Gateway (copiloto): secretos COMPARTIDOS con el servicio model-gateway.
+  # El backend firma el ticket con este secreto; el gateway lo verifica con el mismo
+  # (GATEWAY_AGENT_TICKET_SECRET). El internal secret protege el arriendo de credencial.
+  AGENT_GATEWAY_TICKET_SIGNING_SECRET: dev-agent-ticket-secret-shared
+  AGENT_GATEWAY_INTERNAL_SECRET: dev-internal-lease-secret-shared
 
 services:
   redis:
@@ -126,18 +135,57 @@ services:
       - ./backend:/app/backend
     restart: unless-stopped
 
+  # Agent Gateway (copiloto agéntico): runtime de inferencia neutral. El navegador
+  # conecta por WebSocket bajo el MISMO origen (nginx → /model-gateway/). Comparte con
+  # el backend los secretos de ticket y de arriendo interno. Fake habilitado en dev
+  # para probar turnos sin credencial real de proveedor.
+  model-gateway:
+    build:
+      context: ./model-gateway
+      target: dev
+    image: platform-core-gateway:dev
+    environment:
+      NODE_ENV: development
+      HOST: 0.0.0.0
+      PORT: "8081"
+      # tsx watch (chokidar) no recibe eventos por el bind mount en Windows sin polling.
+      CHOKIDAR_USEPOLLING: "true"
+      GATEWAY_PUBLIC_PATH_PREFIX: /model-gateway
+      GATEWAY_ENABLE_ROOT_PATH_ALIAS: "true"
+      # El navegador llega por nginx dev en http://localhost:8080 (origen del copiloto).
+      GATEWAY_ALLOWED_ORIGINS: ${TRUSTED_BROWSER_ORIGINS:-http://localhost:3000,http://localhost:8080}
+      # Mismos valores que el backend (verificación de ticket y arriendo interno).
+      GATEWAY_AGENT_TICKET_SECRET: dev-agent-ticket-secret-shared
+      GATEWAY_BACKEND_INTERNAL_URL: http://backend:8000
+      GATEWAY_BACKEND_INTERNAL_SECRET: dev-internal-lease-secret-shared
+      # Proveedor FAKE encendido en dev: permite ejercitar un turno completo sin
+      # credencial ni red (útil para demo y pruebas end-to-end).
+      GATEWAY_FAKE_ENABLED: "true"
+    volumes:
+      - ./model-gateway:/app
+      - gateway_node_modules:/app/node_modules
+    depends_on:
+      - backend
+
   frontend:
     build:
       context: ./frontend
       target: dev
     image: platform-core-frontend:dev
+    # webpack (no Turbopack) SOLO en Docker: Turbopack sobre el bind mount de Windows
+    # no descubre las rutas anidadas bajo un segmento dinámico ([resourceName]/...)
+    # y esas páginas responden 404 (verificado en Next 16.2.9: mismo árbol resuelve
+    # con webpack en el contenedor y con Turbopack fuera de Docker). Revisar al
+    # actualizar Next por si el bug de Turbopack+bind mount queda corregido.
+    command: ["npm", "run", "dev:docker"]
     environment:
       API_PROXY_TARGET: http://backend:8000
       BACKEND_INTERNAL_URL: http://backend:8000
       WATCHPACK_POLLING: "true"
-      # Orígenes extra que el dev server de Next acepta (HMR/assets) al entrar desde la
-      # LAN. CSV; vacío por defecto. Ej.: DEV_ALLOWED_ORIGINS=192.168.0.213
-      DEV_ALLOWED_ORIGINS: ${DEV_ALLOWED_ORIGINS:-}
+      # Orígenes extra que el dev server de Next acepta (HMR/assets). Incluye por defecto
+      # el nginx dev (localhost:8080), la entrada same-origin del copiloto. Para probar
+      # desde la LAN añade la IP: DEV_ALLOWED_ORIGINS=localhost:8080,192.168.0.213
+      DEV_ALLOWED_ORIGINS: ${DEV_ALLOWED_ORIGINS:-localhost:8080}
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     volumes:
@@ -145,8 +193,24 @@ services:
       - frontend_node_modules:/app/node_modules
       - frontend_next:/app/.next
 
+  # Entrada nginx dev en UN solo origen (http://localhost:8080): necesaria para el
+  # COPILOTO (cookie del gateway + WebSocket same-origin, el gateway no habla CORS).
+  # El resto de la app sigue accesible directo en http://localhost:3000.
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "${DEV_HTTP_PORT:-8080}:80"
+    volumes:
+      - ./nginx/nginx.dev.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - frontend
+      - backend
+      - model-gateway
+    restart: unless-stopped
+
 volumes:
   redis_data:
   postgres_data:
   frontend_node_modules:
   frontend_next:
+  gateway_node_modules:

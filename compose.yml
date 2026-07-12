@@ -38,6 +38,28 @@ services:
       - backend
     restart: unless-stopped
 
+  # Agent Gateway (copiloto agéntico): runtime de inferencia neutral. nginx lo publica
+  # bajo el MISMO origen en /model-gateway/ (para que el navegador reenvíe la cookie de
+  # sesión). El archivo de entorno debe definir GATEWAY_AGENT_TICKET_SECRET (= el
+  # AGENT_GATEWAY_TICKET_SIGNING_SECRET del backend), GATEWAY_BACKEND_INTERNAL_URL,
+  # GATEWAY_BACKEND_INTERNAL_SECRET (= AGENT_GATEWAY_INTERNAL_SECRET) y GATEWAY_ALLOWED_ORIGINS.
+  model-gateway:
+    build:
+      context: ./model-gateway
+      target: runtime
+    image: platform-core-gateway:prod
+    env_file: ${APP_ENV_FILE:-.env}
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "8081"
+      GATEWAY_PUBLIC_PATH_PREFIX: /model-gateway
+    expose:
+      - "8081"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
   nginx:
     image: nginx:1.27-alpine
     ports:
@@ -47,6 +69,7 @@ services:
     depends_on:
       - frontend
       - backend
+      - model-gateway
     restart: unless-stopped
 
   migrate:

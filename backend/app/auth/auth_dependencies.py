@@ -63,4 +63,30 @@ def get_current_user(
     return build_current_user(session, user)
 
 
+def get_current_user_orm(
+    session: SessionDep,
+    token: str | None = Depends(get_token),
+) -> User:
+    """Devuelve el ORM ``User`` autenticado (no el ``SessionUser`` de sesión).
+
+    Necesario cuando se requieren campos del ORM que ``SessionUser`` no expone, como
+    ``token`` (versión de sesión) — p. ej. para emitir el ticket del Agent Gateway,
+    que ata el ticket a la sesión vigente.
+    """
+    if not token:
+        raise _unauthorized_error()
+
+    try:
+        data = decode_jwt(token)
+    except Exception:
+        raise _unauthorized_error()
+
+    user = session.get(User, data.sub)
+    if not user or not user.is_active or user.token != data.jti:
+        raise _unauthorized_error()
+
+    return user
+
+
 CurrentUser = Annotated[SessionUser, Depends(get_current_user)]
+CurrentUserOrm = Annotated[User, Depends(get_current_user_orm)]

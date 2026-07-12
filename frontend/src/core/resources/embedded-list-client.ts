@@ -1,7 +1,7 @@
 "use client";
 
 import { browserApi } from "@/core/api/browser-client";
-import type { ResourceCapability } from "@/core/api/contracts";
+import type { ResourceCapability, ResourceCatalog, ResourceCatalogResponse } from "@/core/api/contracts";
 import {
   buildListSearchParams,
   type FilterableControls,
@@ -15,6 +15,15 @@ import type { ResourceListPage } from "@/core/resources/list-types";
 // serverApi). No duplica el motor: la capability, columnas, filtros y acciones siguen saliendo del
 // backend. La interacción profunda (orden/filtros/paginación/CRUD) se delega a la ruta /resources
 // existente vía enlaces; aquí sólo se obtiene una vista acotada al paciente.
+
+/** Catálogo completo de recursos visibles para la sesión (misma forma que getResourceCatalog,
+ *  vía browser). Lo usa el copiloto para DERIVAR sus tools del contrato (deriveResourceTools). */
+export async function fetchResourceCatalog(): Promise<ResourceCatalog> {
+  const response = await browserApi<ResourceCatalogResponse>("/api/v1/resources", {
+    method: "GET",
+  });
+  return response.resources;
+}
 
 /** Capability de un recurso (misma forma que getResourceCapability, vía browser). */
 export function fetchResourceCapability(resourceName: string): Promise<ResourceCapability> {

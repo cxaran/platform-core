@@ -15,3 +15,6 @@ __pycache__/
 # Secretos de entorno (nunca versionar)
 .env
 !.env.example
+
+# Build del model-gateway (artefacto de tsup)
+/model-gateway/dist/

@@ -283,3 +283,7 @@ def limit_reset_password(request: Request, token: str) -> None:
 
 def limit_bootstrap_initialize(request: Request) -> None:
     enforce(request, ("bootstrap_ip", client_ip(request)))
+
+
+def limit_internal_lease(request: Request) -> None:
+    enforce(request, ("internal_lease_ip", client_ip(request)))

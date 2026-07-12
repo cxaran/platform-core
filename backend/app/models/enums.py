@@ -56,5 +56,29 @@ class BackupExplorerStatus(str, Enum):
     FAILED = "failed"
 
 
+class AiProvider(str, Enum):
+    """Proveedor de IA de una credencial registrada por el usuario.
+
+    El valor enruta al adaptador correspondiente en el Agent Gateway. Enum NO nativo
+    (VARCHAR + CHECK); el valor más largo es ``openrouter`` (10)."""
+
+    OPENAI = "openai"
+    ANTHROPIC = "anthropic"
+    GEMINI = "gemini"
+    OPENROUTER = "openrouter"
+    OLLAMA = "ollama"
+
+
+class AiCredentialType(str, Enum):
+    """Tipo de credencial de proveedor de IA almacenada por el usuario.
+
+    ``api_key`` guarda un secreto estático (API key). ``oauth`` queda reservado para
+    un flujo OAuth cifrado (p. ej. ChatGPT Plus/Codex); en esta versión solo se
+    implementa ``api_key``. Enum NO nativo (VARCHAR + CHECK)."""
+
+    API_KEY = "api_key"
+    OAUTH = "oauth"
+
+
 def enum_values(enum_class: type[Enum]) -> list[str]:
     return [str(member.value) for member in enum_class]
