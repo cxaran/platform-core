@@ -2978,6 +2978,10 @@ export interface components {
             agent_ticket_ttl_seconds_effective: number;
             /** Agent Lease Ttl Seconds Effective */
             agent_lease_ttl_seconds_effective: number;
+            /** Audit Retention Days */
+            audit_retention_days?: number | null;
+            /** Notification Retention Days */
+            notification_retention_days?: number | null;
             /** Email Mode */
             email_mode: string;
             /** Email From Address */
@@ -3086,6 +3090,16 @@ export interface components {
              * @description Vigencia del secreto de proveedor de IA arrendado por turno. Vacío = default del despliegue.
              */
             agent_lease_ttl_seconds?: number | null;
+            /**
+             * Retención de auditoría (días)
+             * @description La poda diaria elimina de la bitácora lo más antiguo que esta ventana. Vacío = conservar todo.
+             */
+            audit_retention_days?: number | null;
+            /**
+             * Retención de notificaciones leídas (días)
+             * @description La poda diaria elimina las notificaciones LEÍDAS más antiguas que esta ventana (las no leídas nunca se podan). Vacío = conservar todo.
+             */
+            notification_retention_days?: number | null;
             /**
              * Transporte de correo
              * @description environment: SMTP del despliegue (Mailpit en desarrollo); smtp/resend: credenciales guardadas aquí (cifradas).

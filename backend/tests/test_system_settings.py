@@ -447,7 +447,9 @@ class SystemSettingsApiTest(unittest.TestCase):
         self.assertIsNotNone(body["app_base_url_verified_at"])
         from backend.app.core.runtime_origins import verified_origins
 
-        self.assertIn("https://empresa.example.com", verified_origins())
+        # El set guarda la forma comparable del guard CSRF: puerto efectivo
+        # explícito (ver docstring de runtime_origins).
+        self.assertIn("https://empresa.example.com:443", verified_origins())
 
     def test_verify_domain_rejects_mismatch_and_bad_urls(self) -> None:
         import httpx
