@@ -17,17 +17,22 @@ cd platform-core
 ./scripts/install.sh https://tu-dominio.com
 ```
 
-El instalador:
+El instalador genera el `.env` de producción con **todos los secretos
+aleatorios** (nunca sobreescribe uno existente) e imprime el **token de
+Bootstrap una sola vez** — guárdalo: protege el asistente inicial.
 
-1. Genera el `.env` de producción con **todos los secretos aleatorios** (nunca
-   sobreescribe uno existente).
-2. Imprime el **token de Bootstrap una sola vez** — guárdalo: protege el
-   asistente inicial.
-3. Levanta el stack (`docker compose up -d`) y aplica las migraciones.
+Después ejecuta los pasos que el instalador imprime:
 
-Después abre `https://tu-dominio.com/setup` e introduce el token: el asistente
-crea la cuenta administradora y las decisiones iniciales (registro público,
-nombre de la institución, dominio).
+```bash
+docker compose build
+docker compose --profile migrate run --rm migrate
+docker compose up -d
+# (respaldos) docker compose --profile taskiq up -d taskiq-worker taskiq-scheduler
+```
+
+Y abre `https://tu-dominio.com/setup` con el token: el asistente crea la cuenta
+administradora y las decisiones iniciales (registro público, nombre de la
+institución, dominio).
 
 !!! note "Todo lo demás se configura desde la interfaz"
     Correo saliente, respaldos a Google Drive, verificación de inicio de sesión,
