@@ -17,8 +17,9 @@
 #   ./scripts/install.sh --print-env     genera y muestra un .env SIN escribirlo
 #                                        ni tocar Docker (revisión previa)
 #
-# Requisitos del VPS: Docker con Compose v2 y openssl. Para TLS automático: un
-# dominio apuntando a este servidor y los puertos 80/443 abiertos.
+# Requisitos del VPS: Docker con Compose v2 y openssl. El servidor sirve HTTP;
+# el HTTPS público lo pone tu túnel o proxy externo (Cloudflare Tunnel en este
+# mismo servidor, o un balanceador tipo ALB/CloudFront que reenvía al puerto).
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -95,8 +96,8 @@ orchestrate() {
   echo "   ${token}"
   echo
   echo " Siguiente paso: abre ${domain}/setup e introduce el token."
-  if [[ ",$profiles," == *",tls,"* ]]; then
-    echo " (Caddy emite el certificado en el primer acceso: dale ~30 segundos.)"
+  if [ -n "${TUNNEL_HINT:-}" ]; then
+    echo " ${TUNNEL_HINT}"
   fi
   echo
   echo " Tras el asistente, el checklist de la app te guía para configurar"
@@ -121,38 +122,46 @@ fi
 # ------------------------------------------------------------------ preguntas ----
 echo "== Platform Core — instalación de producción =="
 echo
-echo "Acceso público (TLS):"
-echo "  1) Dominio con HTTPS automático (Caddy + Let's Encrypt)  ← recomendado"
-echo "  2) Detrás de MI propio proxy TLS (yo termino HTTPS)"
-echo "  3) Solo pruebas por HTTP (sin dominio; modo staging)"
-read -r -p "Elige [1/2/3, default 1]: " TLS_CHOICE
-TLS_CHOICE="${TLS_CHOICE:-1}"
+echo "El servidor sirve HTTP; el HTTPS público lo pone tu túnel o proxy externo"
+echo "(Cloudflare Tunnel en este mismo servidor, un ALB/CloudFront de AWS, etc.)."
+echo
+echo "Acceso público:"
+echo "  1) Dominio HTTPS servido por un túnel/proxy externo  ← producción"
+echo "  2) Solo pruebas por HTTP (sin dominio; modo staging)"
+read -r -p "Elige [1/2, default 1]: " ACCESS_CHOICE
+ACCESS_CHOICE="${ACCESS_CHOICE:-1}"
 
 ENVIRONMENT="production"
 PROFILES="taskiq"
 HTTP_PORT_LINE=""
-CADDY_DOMAIN=""
+TUNNEL_HINT=""
 
-case "$TLS_CHOICE" in
+case "$ACCESS_CHOICE" in
   1)
-    read -r -p "Dominio (sin https://, p. ej. plataforma.miempresa.com): " BARE_DOMAIN
-    BARE_DOMAIN="${BARE_DOMAIN#https://}"; BARE_DOMAIN="${BARE_DOMAIN#http://}"; BARE_DOMAIN="${BARE_DOMAIN%/}"
-    [ -n "$BARE_DOMAIN" ] || { echo "El TLS automático requiere un dominio."; exit 1; }
-    DOMAIN="https://${BARE_DOMAIN}"
-    CADDY_DOMAIN="$BARE_DOMAIN"
-    PROFILES="${PROFILES},tls"
-    # Caddy toma 80/443; nginx queda solo en el loopback del host (diagnóstico).
-    HTTP_PORT_LINE="HTTP_PORT=127.0.0.1:8088"
+    read -r -p "Dominio público (https://…): " DOMAIN
+    DOMAIN="${DOMAIN%/}"
+    case "$DOMAIN" in
+      https://*) ;;
+      *) echo "Producción requiere https:// (el navegador exige cookies seguras)."; exit 1 ;;
+    esac
+    read -r -p "Puerto HTTP del stack en este servidor [8088]: " LOCAL_PORT
+    LOCAL_PORT="${LOCAL_PORT:-8088}"
+    read -r -p "¿El túnel/proxy corre en ESTE mismo servidor (Cloudflare Tunnel, etc.)? [S/n]: " SAME_HOST
+    case "${SAME_HOST:-S}" in
+      n|N)
+        # Proxy/balanceador EXTERNO (ALB, otro host): escucha en todas las
+        # interfaces — protege el puerto con el firewall / security group.
+        HTTP_PORT_LINE="HTTP_PORT=${LOCAL_PORT}"
+        TUNNEL_HINT="Apunta tu proxy/balanceador al puerto ${LOCAL_PORT} de este servidor (protégelo por firewall/SG)."
+        ;;
+      *)
+        # Túnel en el mismo host: solo loopback (nada expuesto a la red).
+        HTTP_PORT_LINE="HTTP_PORT=127.0.0.1:${LOCAL_PORT}"
+        TUNNEL_HINT="Apunta tu túnel a http://127.0.0.1:${LOCAL_PORT} (p. ej.: cloudflared tunnel run … → service: http://127.0.0.1:${LOCAL_PORT})."
+        ;;
+    esac
     ;;
   2)
-    read -r -p "Dominio público con https (https://…): " DOMAIN
-    DOMAIN="${DOMAIN%/}"
-    case "$DOMAIN" in https://*) ;; *) echo "Producción requiere https:// (cookies seguras)."; exit 1 ;; esac
-    read -r -p "Puerto local donde tu proxy encontrará el stack [8080]: " LOCAL_PORT
-    HTTP_PORT_LINE="HTTP_PORT=127.0.0.1:${LOCAL_PORT:-8080}"
-    echo "   → Apunta tu proxy a http://127.0.0.1:${LOCAL_PORT:-8080}"
-    ;;
-  3)
     DOMAIN="http://localhost"
     ENVIRONMENT="staging"
     echo "   ⚠ Modo STAGING (sin https las cookies seguras de producción no funcionan)."
@@ -199,8 +208,9 @@ TRUSTED_BROWSER_ORIGINS=${DOMAIN}
 
 # Perfiles de compose de ESTA instalación (docker compose los lee de aquí):
 #   taskiq = tareas en segundo plano (respaldos, retención, correos de alertas)
-#   db     = PostgreSQL local en contenedor      tls = HTTPS automático con Caddy
+#   db     = PostgreSQL local en contenedor
 COMPOSE_PROFILES=${PROFILES}
+# Puerto HTTP del stack en este servidor; el HTTPS lo pone el túnel/proxy externo.
 ${HTTP_PORT_LINE}
 
 SECRET_KEY=$(rand_hex)
@@ -254,17 +264,8 @@ fi
 umask 077
 printf '%s\n' "$ENV_CONTENT" > .env
 echo "→ .env generado (permisos restringidos)."
-
-if [ -n "$CADDY_DOMAIN" ]; then
-  mkdir -p caddy
-  cat > caddy/Caddyfile <<CADDY
-# Generado por scripts/install.sh — TLS automático para ${CADDY_DOMAIN}.
-${CADDY_DOMAIN} {
-	encode gzip
-	reverse_proxy nginx:80
-}
-CADDY
-  echo "→ caddy/Caddyfile generado para ${CADDY_DOMAIN}."
+if [ -n "$TUNNEL_HINT" ]; then
+  echo "→ ${TUNNEL_HINT}"
 fi
 
 orchestrate "$DOMAIN"

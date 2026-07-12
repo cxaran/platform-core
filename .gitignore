@@ -21,7 +21,3 @@ __pycache__/
 
 # Build local de MkDocs (el servicio docs sirve en caliente; site/ es artefacto)
 /site/
-
-# Caddyfile real de la instalación (lo genera install.sh con el dominio; la
-# plantilla versionada es caddy/Caddyfile.example)
-/caddy/Caddyfile

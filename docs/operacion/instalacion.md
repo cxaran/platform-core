@@ -6,8 +6,10 @@ camino y termina con la API sana y el token del asistente en pantalla.
 ## Requisitos
 
 - Un VPS con **Docker (Compose v2)** y `openssl`.
-- Para HTTPS automático: un **dominio** con registro A/AAAA apuntando al VPS y
-  los puertos **80 y 443** abiertos en el firewall.
+- El servidor sirve **HTTP**; el HTTPS público lo pone tu **túnel o proxy
+  externo**: Cloudflare Tunnel corriendo en el mismo servidor, o un
+  balanceador/CDN (ALB, CloudFront…) que termina TLS y reenvía al puerto del
+  stack.
 
 ## Instalar
 
@@ -19,13 +21,22 @@ cd platform-core
 
 El instalador pregunta solo dos cosas y hace el resto:
 
-**1 · Acceso público (TLS)** — tres modos:
+**1 · Acceso público** — dos modos:
 
 | Modo | Qué hace |
 | --- | --- |
-| **Dominio con HTTPS automático** (recomendado) | Levanta Caddy delante de nginx: obtiene y renueva solo los certificados de Let's Encrypt. |
-| Detrás de mi propio proxy | Tú terminas HTTPS; el stack queda en `127.0.0.1:<puerto>` para tu proxy. |
-| Solo pruebas HTTP | Modo *staging* sin dominio. ⚠ No usar con datos reales (las cookies seguras de producción exigen HTTPS). |
+| **Dominio HTTPS vía túnel/proxy externo** (producción) | Pide el dominio público (`https://…`) y el puerto HTTP local del stack. Si el túnel corre en **este mismo servidor** (Cloudflare Tunnel), el stack queda solo en `127.0.0.1:<puerto>` — nada expuesto a la red; si el proxy es **externo** (ALB…), escucha en el puerto para tu balanceador (protégelo por firewall/SG). |
+| Solo pruebas HTTP | Modo *staging* sin dominio. ⚠ No usar con datos reales (las cookies seguras de producción exigen HTTPS en el navegador). |
+
+Ejemplo con Cloudflare Tunnel en el mismo servidor (puerto 8088):
+
+```yaml
+# config.yml del túnel
+ingress:
+  - hostname: plataforma.miempresa.com
+    service: http://127.0.0.1:8088
+  - service: http_status:404
+```
 
 **2 · Base de datos PostgreSQL:**
 
@@ -59,8 +70,7 @@ asistente crea la cuenta administradora.
 
 | Servicio | Rol | Cuándo existe |
 | --- | --- | --- |
-| `caddy` | HTTPS automático (80/443 → nginx) | perfil `tls` |
-| `nginx` | Enrutador interno de origen único (`/api/`, `/docs/`, `/model-gateway/`, frontend) | siempre |
+| `nginx` | Enrutador de origen único (`/api/`, `/docs/`, `/model-gateway/`, frontend) — el túnel/proxy externo apunta a su puerto | siempre |
 | `backend` | FastAPI (datos, RBAC, contrato) — non-root, con healthcheck | siempre |
 | `frontend` | Next.js (interfaz dirigida por contrato) | siempre |
 | `model-gateway` | Runtime del copiloto (provider-neutral) | siempre |

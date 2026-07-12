@@ -136,26 +136,10 @@ services:
     logging: *default-logging
     restart: unless-stopped
 
-  # TLS automático opcional (profile "tls"): Caddy delante de nginx obtiene y renueva
-  # los certificados de Let's Encrypt para el dominio del Caddyfile (lo genera el
-  # instalador). Con este profile activo, nginx queda en loopback (HTTP_PORT del .env)
-  # y Caddy publica 80/443.
-  caddy:
-    image: caddy:2-alpine
-    profiles: [ "tls" ]
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      nginx:
-        condition: service_started
-    logging: *default-logging
-    restart: unless-stopped
-
+  # El stack sirve HTTP en ${HTTP_PORT}; el HTTPS público vive FUERA del stack:
+  # un túnel en el mismo servidor (p. ej. Cloudflare Tunnel apuntando a
+  # http://127.0.0.1:<puerto>) o un proxy/balanceador externo (ALB/CloudFront…)
+  # que termina TLS y reenvía al puerto del host.
   nginx:
     image: nginx:1.27-alpine
     ports:
@@ -226,5 +210,3 @@ services:
 volumes:
   redis_data:
   postgres_data:
-  caddy_data:
-  caddy_config:
