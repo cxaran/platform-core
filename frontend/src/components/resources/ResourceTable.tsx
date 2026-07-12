@@ -3,8 +3,10 @@ import Link from "next/link";
 
 import type {
   FieldValueType,
+  HttpMethod,
   ItemReference,
   ResourceActionCapability,
+  ResourceFormFieldCapability,
   ResourceListCapability,
   ResourceRelatedListCapability,
   ResourceRelationCapability,
@@ -14,12 +16,15 @@ import type { ResourceListQuery } from "@/core/resources/list-query";
 import type { FilterableFieldControl } from "@/core/resources/filterable";
 import { visibleActionsForRow } from "@/core/resources/resource-action";
 
+import { CellKeyboardNav } from "./CellKeyboardNav";
 import { CellView } from "./CellView";
 import { ColumnFilterButton } from "./ColumnFilterButton";
+import { EditableCell } from "./EditableCell";
 import { enumLabelMaps } from "./export/build-export-rows";
 import { ResourceRowActions } from "./ResourceRowActions";
 import { ResourceTableViewport } from "./ResourceTableViewport";
 import { RowActionsFlyout } from "./RowActionsFlyout";
+import { RowSelectCheckbox, SelectAllCheckbox } from "./RowSelection";
 
 // Chips de acción dentro del flyout (Ver/Editar/relaciones): compactos, sin subrayado.
 const ACTION_LINK_CLASS =
@@ -190,6 +195,8 @@ export function ResourceTable({
   hiddenColumns = [],
   headerFilters,
   onEditInline,
+  inlineEdit,
+  selectable = false,
   renderRowLead,
 }: Readonly<{
   label: string;
@@ -222,14 +229,27 @@ export function ResourceTable({
   hiddenColumns?: readonly string[];
   // Menú de filtro estilo Excel por columna: campos filtrables por nombre de
   // columna + estado canónico para reconstruir URLs. Opt-in (sólo /resources).
+  // ``facetsUrl`` (list.facets_url) habilita la checklist de valores con conteos.
   headerFilters?: {
     basePath: string;
     params: Record<string, string>;
     fields: Record<string, FilterableFieldControl>;
+    facetsUrl?: string;
   };
   // Opt-in: si se pasa, "Editar" abre el formulario INLINE (callback con id+fila) en vez de navegar
   // a /resources/.../edit. Las páginas /resources NO lo pasan → conservan la navegación de siempre.
   onEditInline?: (id: string, row: Record<string, unknown>) => void;
+  // Edición de celdas en sitio (estilo hoja): PATCH del formulario de actualización
+  // del contrato con payload de UN campo. Solo las columnas presentes en
+  // ``fields`` se vuelven editables; el backend revalida y RBAC ya filtró el form.
+  inlineEdit?: {
+    urlTemplate: string;
+    method: HttpMethod;
+    fields: Record<string, ResourceFormFieldCapability>;
+  };
+  // Selección múltiple (checkbox por fila + página completa). Requiere que la
+  // página envuelva la tabla en ``RowSelectionProvider`` (islas de cliente).
+  selectable?: boolean;
   // Acción ESPECIAL por fila, SIEMPRE VISIBLE junto a la pestaña de acciones (p. ej. el botón de
   // chat del paciente). Opt-in: sólo lo pasa la tabla de pacientes.
   renderRowLead?: (id: string, row: Record<string, unknown>) => ReactNode;
@@ -285,10 +305,17 @@ export function ResourceTable({
         />
       ) : (
         <div className={containerClass}>
+          {/* Navegación por celdas (flechas, Ctrl+C, Enter) — isla sin UI. */}
+          <CellKeyboardNav />
           <ResourceTableViewport scrollerClassName={maxHeightClassName}>
             <table className="min-w-full divide-y divide-[var(--border)] text-sm">
               <thead className="rt-thead">
                 <tr>
+                  {selectable ? (
+                    <th scope="col" className={`w-9 ${compact ? "px-2" : "px-3"}`}>
+                      <SelectAllCheckbox />
+                    </th>
+                  ) : null}
                   {columns.map((column, columnIndex) => {
                     const active =
                       explicitSort && explicitSort.field === column.name
@@ -329,6 +356,7 @@ export function ResourceTable({
                                 field={filterField}
                                 basePath={headerFilters.basePath}
                                 params={headerFilters.params}
+                                facetsUrl={headerFilters.facetsUrl}
                               />
                             </span>
                           ) : null}
@@ -359,23 +387,45 @@ export function ResourceTable({
                       rowActions.length > 0);
                   return (
                     <tr key={id ?? rowIndex} className="rt-row">
+                      {selectable ? (
+                        <td className={`rt-select-cell ${compact ? "px-2 py-1.5" : "px-3 py-2"}`}>
+                          {id ? <RowSelectCheckbox id={id} index={rowIndex} /> : null}
+                        </td>
+                      ) : null}
                       {columns.map((column, columnIndex) => {
                         const align = columnAlignment(column.type);
                         const spanClass = `block max-w-[36ch] truncate ${align.cell}`;
+                        const cellView = (
+                          <CellView
+                            value={row[column.name]}
+                            type={column.type}
+                            enumLabels={enumLabels.get(column.name)}
+                            className={spanClass}
+                          />
+                        );
+                        const editSpec = inlineEdit?.fields[column.name];
                         return (
                           <td
                             key={column.name}
                             data-label={column.label}
-                            className={`${cellPad} text-[var(--tx)] ${columnPriorityClass(columnIndex, column.type)} ${
+                            data-rt-cell
+                            tabIndex={-1}
+                            className={`${cellPad} text-[var(--tx)] outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[var(--accent-bd)] ${columnPriorityClass(columnIndex, column.type)} ${
                               column.name === cardTitleName ? "rt-card-title" : ""
                             }`}
                           >
-                            <CellView
-                              value={row[column.name]}
-                              type={column.type}
-                              enumLabels={enumLabels.get(column.name)}
-                              className={spanClass}
-                            />
+                            {inlineEdit && editSpec && id ? (
+                              <EditableCell
+                                url={inlineEdit.urlTemplate.replace("{id}", encodeURIComponent(id))}
+                                method={inlineEdit.method}
+                                spec={editSpec}
+                                value={row[column.name]}
+                              >
+                                {cellView}
+                              </EditableCell>
+                            ) : (
+                              cellView
+                            )}
                           </td>
                         );
                       })}

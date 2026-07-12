@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { ApiRequestError } from "@/core/api/api-error";
 import type { ResourceCapability } from "@/core/api/contracts";
 import { serverApi } from "@/core/api/server-client";
+import { expandMultiValueParams } from "@/core/resources/filterable";
 import {
   buildFilterableControls,
   buildListSearchParams,
@@ -101,7 +102,10 @@ export async function getResourceListPage(
   // Reconstruye los controles desde la capability para serializar con una allowlist
   // ordenada (nunca itera query.filters directamente).
   const controls = buildFilterableControls(capability.list);
-  const url = `${capability.api_path}?${buildListSearchParams(query, controls).toString()}`;
+  // Frontera con el API: los filtros múltiples (valor unido) se expanden a
+  // parámetros repetidos, que es la forma de lista que parsea el backend.
+  const apiParams = expandMultiValueParams(buildListSearchParams(query, controls));
+  const url = `${capability.api_path}?${apiParams.toString()}`;
   const cookie = (await cookies()).toString();
 
   let raw: unknown;

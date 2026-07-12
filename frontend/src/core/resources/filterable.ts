@@ -32,7 +32,35 @@ export class FilterableContractError extends Error {
 type SelectValidator = { kind: "select"; values: ReadonlySet<string> };
 type DateValidator = { kind: "date" };
 type TextValidator = { kind: "text"; maxLength: number };
-type ParamValidator = SelectValidator | DateValidator | TextValidator;
+type MultiValidator = {
+  kind: "multi";
+  // Universo cerrado (enum/select declarado); undefined = universo abierto (facetas).
+  values?: ReadonlySet<string>;
+  maxValues: number;
+  maxLength: number;
+};
+type ParamValidator = SelectValidator | DateValidator | TextValidator | MultiValidator;
+
+/**
+ * Separador de los valores de un filtro múltiple (``in``) DENTRO de un solo query
+ * param de la página: U+001F (unit separator), imposible de teclear y siempre
+ * percent-encoded. El estado canónico sigue siendo ``Record<string, string>`` — el
+ * valor unido se divide en parámetros REPETIDOS solo en la frontera con el API
+ * (``expandMultiValueParams``), que es lo que FastAPI parsea como lista.
+ */
+export const MULTI_VALUE_SEPARATOR = "\u001f";
+
+export function joinMultiValue(values: readonly string[]): string {
+  return values.join(MULTI_VALUE_SEPARATOR);
+}
+
+export function splitMultiValue(value: string): string[] {
+  return value.split(MULTI_VALUE_SEPARATOR).filter((part) => part !== "");
+}
+
+// Tope defensivo si el contrato no declara max_values (coincide con el default
+// ``max_in_values`` del backend).
+const DEFAULT_MAX_IN_VALUES = 100;
 
 export type FilterableOperatorControl = {
   key: string;
@@ -47,6 +75,7 @@ export type FilterableOperatorControl = {
   calendarTimezone?: string;
   rangeEndInclusive?: boolean;
   placeholder?: string;
+  maxValues?: number;
 };
 
 export type FilterableFieldControl = {
@@ -54,6 +83,9 @@ export type FilterableFieldControl = {
   label: string;
   valueType: FilterableFieldCapability["value_type"];
   operators: readonly FilterableOperatorControl[];
+  // El campo admite autofiltro por valores únicos (checklist con conteos vía el
+  // ``facets_url`` de la lista).
+  facetable: boolean;
 };
 
 export type FilterableControls = {
@@ -147,7 +179,20 @@ function buildOperatorControl(
   }
 
   let validator: ParamValidator;
-  if (operator.widget === "select") {
+  if (operator.value_shape === "multi") {
+    // Autofiltro por valores (``in``): N valores unidos con MULTI_VALUE_SEPARATOR
+    // en el estado canónico. Con opciones declaradas (enum/select) cada valor debe
+    // pertenecer al universo; sin ellas, el universo es abierto (facetas).
+    validator = {
+      kind: "multi",
+      values:
+        operator.options && operator.options.length > 0
+          ? new Set(operator.options.map((option) => option.value))
+          : undefined,
+      maxValues: operator.max_values ?? DEFAULT_MAX_IN_VALUES,
+      maxLength: MAX_TEXT_FILTER_LENGTH,
+    };
+  } else if (operator.widget === "select") {
     validator = selectValidator(operator, fieldKey);
   } else if (operator.widget === "date") {
     validator = { kind: "date" };
@@ -160,6 +205,7 @@ function buildOperatorControl(
     ...base,
     parameterName: parameter,
     options: operator.options?.map((option) => ({ value: option.value, label: option.label })),
+    maxValues: operator.max_values ?? undefined,
   };
 }
 
@@ -189,6 +235,7 @@ export function buildFilterableControls(list: ResourceListCapability): Filterabl
       label: field.label,
       valueType: field.value_type,
       operators,
+      facetable: field.facetable ?? false,
     });
   }
 
@@ -219,6 +266,17 @@ function isAcceptedValue(validator: ParamValidator, value: string): boolean {
       return isValidIsoDate(value);
     case "text":
       return value.length > 0 && value.length <= validator.maxLength;
+    case "multi": {
+      const parts = splitMultiValue(value);
+      if (parts.length === 0 || parts.length > validator.maxValues) {
+        return false;
+      }
+      return parts.every(
+        (part) =>
+          part.length <= validator.maxLength &&
+          (validator.values === undefined || validator.values.has(part)),
+      );
+    }
   }
 }
 
@@ -237,7 +295,14 @@ export function parseFilterableValues(
 ): Record<string, string> {
   const filters: Record<string, string> = {};
   for (const parameter of controls.paramNames) {
-    const raw = singleParam(searchParams[parameter]);
+    const validator = controls.validators.get(parameter);
+    const rawValue = searchParams[parameter];
+    // Los filtros múltiples aceptan además la forma repetida (?x_in=a&x_in=b),
+    // normalizándola a la forma canónica unida. El resto sigue siendo un solo valor.
+    const raw =
+      validator?.kind === "multi" && Array.isArray(rawValue)
+        ? joinMultiValue(rawValue.map((part) => part.trim()).filter((part) => part !== ""))
+        : singleParam(rawValue);
     if (raw === undefined) {
       continue;
     }
@@ -245,7 +310,6 @@ export function parseFilterableValues(
     if (trimmed === "") {
       continue;
     }
-    const validator = controls.validators.get(parameter);
     if (validator && isAcceptedValue(validator, trimmed)) {
       filters[parameter] = trimmed;
     }
@@ -269,4 +333,24 @@ export function appendFilterableParams(
       params.set(parameter, value);
     }
   }
+}
+
+/**
+ * Frontera con el API: divide cada valor unido con ``MULTI_VALUE_SEPARATOR`` en
+ * parámetros REPETIDOS (lo que FastAPI parsea como lista). Las URLs de página
+ * conservan la forma unida (un solo param); solo las requests al backend pasan
+ * por aquí. Devuelve una instancia nueva; no muta la entrada.
+ */
+export function expandMultiValueParams(params: URLSearchParams): URLSearchParams {
+  const expanded = new URLSearchParams();
+  for (const [key, value] of params) {
+    if (value.includes(MULTI_VALUE_SEPARATOR)) {
+      for (const part of splitMultiValue(value)) {
+        expanded.append(key, part);
+      }
+    } else {
+      expanded.append(key, value);
+    }
+  }
+  return expanded;
 }

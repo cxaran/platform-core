@@ -54,6 +54,11 @@ export type FieldValueType = components["schemas"]["FieldValueType"];
 export type WidgetType = components["schemas"]["WidgetType"];
 export type FilterOperator = components["schemas"]["FilterOperator"];
 export type HttpMethod = components["schemas"]["HttpMethod"];
+// Autofiltro por valores (facetas) y agregados del pie de tabla.
+export type ResourceFacetsResponse = components["schemas"]["ResourceFacetsResponse"];
+export type FacetValueRead = components["schemas"]["FacetValueRead"];
+export type ResourceStatsResponse = components["schemas"]["ResourceStatsResponse"];
+export type FieldAggregatesRead = components["schemas"]["FieldAggregatesRead"];
 
 // Respuesta del catálogo derivada de la operación real (no se reescribe a mano).
 // El endpoint devuelve un envelope {resources, navigation_modules}; ``ResourceCatalog``

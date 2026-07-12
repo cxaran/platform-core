@@ -18,10 +18,12 @@ export function AddFilterPopover({
   fields,
   basePath,
   params,
+  facetsUrl,
 }: Readonly<{
   fields: readonly FilterableFieldControl[];
   basePath: string;
   params: Readonly<Record<string, string>>;
+  facetsUrl?: string;
 }>) {
   const router = useRouter();
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -83,7 +85,7 @@ export function AddFilterPopover({
                 </svg>
                 Campos
               </button>
-              <FilterEditor field={selected} values={params} onApply={apply} />
+              <FilterEditor field={selected} values={params} onApply={apply} facetsUrl={facetsUrl} />
             </div>
           ) : (
             <ul className="space-y-0.5">

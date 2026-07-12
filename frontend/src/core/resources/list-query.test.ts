@@ -29,6 +29,7 @@ function fieldCap(
     sortable: false,
     searchable: false,
     filter_operators: [],
+    aggregable: false,
     ...overrides,
   };
 }

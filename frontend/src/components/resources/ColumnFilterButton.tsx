@@ -19,10 +19,12 @@ export function ColumnFilterButton({
   field,
   basePath,
   params,
+  facetsUrl,
 }: Readonly<{
   field: FilterableFieldControl;
   basePath: string;
   params: Readonly<Record<string, string>>;
+  facetsUrl?: string;
 }>) {
   const router = useRouter();
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -81,7 +83,7 @@ export function ColumnFilterButton({
           onClose={() => setAnchor(null)}
           ignoreRef={buttonRef}
         >
-          <FilterEditor field={field} values={params} onApply={apply} />
+          <FilterEditor field={field} values={params} onApply={apply} facetsUrl={facetsUrl} />
         </FilterPanel>
       ) : null}
     </>

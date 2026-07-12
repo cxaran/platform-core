@@ -3,11 +3,14 @@ import { cookies } from "next/headers";
 import Link from "next/link";
 
 import { BackLink } from "@/components/layout/BackLink";
+import { BulkActionsBar } from "@/components/resources/BulkActionsBar";
 import { GroupedCatalog } from "@/components/resources/GroupedCatalog";
 import { hiddenColumnsCookieName } from "@/components/resources/filter-nav";
 import { ResourcePagination } from "@/components/resources/ResourcePagination";
 import { ResourceTable } from "@/components/resources/ResourceTable";
 import { ResourceToolbar } from "@/components/resources/ResourceToolbar";
+import { RowSelectionProvider } from "@/components/resources/RowSelection";
+import { TableTotals } from "@/components/resources/TableTotals";
 import { requireSession } from "@/core/auth/session";
 import { getResourceCapability } from "@/core/resources/capabilities-client";
 import {
@@ -21,6 +24,7 @@ import {
 } from "@/core/resources/list-query";
 import { getPermissionsCatalog } from "@/core/resources/permissions-catalog-client";
 import { getResourceListPage } from "@/core/resources/resource-list-client";
+import { getResourceStats } from "@/core/resources/stats-data";
 
 type PageProps = {
   params: Promise<{ resourceName: string }>;
@@ -101,6 +105,51 @@ export default async function ResourcePage({ params, searchParams }: PageProps) 
     controls.ordered.map((field) => [field.key, field]),
   );
 
+  // Edición de celdas en sitio: solo si el contrato proyecta el formulario de
+  // actualización (RBAC ya aplicado) y hay identidad por item. Las columnas
+  // editables son la intersección columnas visibles ∩ campos del form.
+  const updateForm = capability.forms?.update;
+  const inlineEdit =
+    updateForm && capability.item_reference
+      ? {
+          urlTemplate: updateForm.url_template,
+          method: updateForm.method,
+          fields: Object.fromEntries(
+            updateForm.fields
+              .filter((field) => field.editable)
+              .map((field) => [field.name, field]),
+          ),
+        }
+      : undefined;
+
+  // Totales del pie (backend, bajo el filtro activo) para columnas numéricas
+  // agregables VISIBLES. Es un realce: si falla, la tabla sale sin pie.
+  const hiddenSet = new Set(hiddenColumns);
+  const aggregableColumns = list.fields.filter(
+    (field) => field.aggregable && field.visible_in_list && !hiddenSet.has(field.name),
+  );
+  const stats =
+    list.stats_url && aggregableColumns.length > 0
+      ? await getResourceStats(
+          list.stats_url,
+          aggregableColumns.map((field) => field.name),
+          query,
+          controls,
+        )
+      : null;
+
+  // Selección múltiple: filas de la página actual con su id (para rango con
+  // Shift y para el TSV/lote). Requiere identidad por item.
+  const idField = capability.item_reference?.field ?? "id";
+  const selectableRows = capability.item_reference
+    ? page.items.flatMap((row) => {
+        const rawId = row[idField];
+        return typeof rawId === "string" && rawId !== "" ? [{ id: rawId, row }] : [];
+      })
+    : [];
+  const selectable = selectableRows.length > 0;
+  const visibleColumnsMeta = listColumns.filter((column) => !hiddenSet.has(column.name));
+
   return (
     <div className="space-y-4">
       <BackLink href="/resources" label="Recursos" />
@@ -119,6 +168,7 @@ export default async function ResourcePage({ params, searchParams }: PageProps) 
         }}
         columns={listColumns}
         hiddenColumns={hiddenColumns}
+        facetsUrl={list.facets_url ?? undefined}
         actions={
           createHref ? (
             <Link
@@ -130,7 +180,15 @@ export default async function ResourcePage({ params, searchParams }: PageProps) 
           ) : null
         }
       />
-      <ResourceTable
+      <RowSelectionProvider rows={selectableRows}>
+        {selectable ? (
+          <BulkActionsBar
+            columns={visibleColumnsMeta}
+            actions={capability.actions ?? []}
+            placeholder={capability.item_reference?.placeholder ?? "id"}
+          />
+        ) : null}
+        <ResourceTable
         label=""
         list={list}
         page={page}
@@ -154,8 +212,13 @@ export default async function ResourcePage({ params, searchParams }: PageProps) 
           basePath,
           params: canonicalParams,
           fields: fieldsByColumn,
+          facetsUrl: list.facets_url ?? undefined,
         }}
-      />
+        inlineEdit={inlineEdit}
+        selectable={selectable}
+        />
+      </RowSelectionProvider>
+      {stats ? <TableTotals stats={stats} columns={aggregableColumns} /> : null}
       <ResourcePagination
         pagination={pagination}
         buildOffsetHref={(offset) => buildPageHref(basePath, query, controls, offset)}

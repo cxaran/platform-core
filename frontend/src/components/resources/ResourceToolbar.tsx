@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 
-import type { FilterableFieldControl } from "@/core/resources/filterable";
+import { splitMultiValue, type FilterableFieldControl } from "@/core/resources/filterable";
 
 import { AddFilterPopover } from "./AddFilterPopover";
 import { ColumnVisibilityMenu } from "./ColumnVisibilityMenu";
@@ -52,6 +52,18 @@ function activeChips(
       const parameter = operator.parameterName;
       if (!parameter || filters[parameter] === undefined) continue;
       const raw = filters[parameter];
+      if (operator.valueShape === "multi") {
+        // Autofiltro: el valor canónico une N valores; el chip los lista legibles.
+        const parts = splitMultiValue(raw).map(
+          (part) => operator.options?.find((entry) => entry.value === part)?.label ?? part,
+        );
+        chips.push({
+          parameter,
+          label: `${field.label} · ${operator.label}`,
+          value: parts.join(", "),
+        });
+        continue;
+      }
       const option = operator.options?.find((entry) => entry.value === raw);
       chips.push({
         parameter,
@@ -74,6 +86,7 @@ export function ResourceToolbar({
   columns,
   hiddenColumns,
   actions,
+  facetsUrl,
 }: Readonly<{
   label: string;
   resourceName: string;
@@ -87,6 +100,8 @@ export function ResourceToolbar({
   hiddenColumns: readonly string[];
   // Acciones del recurso (p. ej. link "Nuevo"), al final del renglón.
   actions?: ReactNode;
+  // ``list.facets_url`` del contrato (checklist con conteos en los filtros múltiples).
+  facetsUrl?: string;
 }>) {
   const chips = activeChips(fields, filters);
 
@@ -127,7 +142,7 @@ export function ResourceToolbar({
         </span>
       ))}
 
-      <AddFilterPopover fields={fields} basePath={basePath} params={params} />
+      <AddFilterPopover fields={fields} basePath={basePath} params={params} facetsUrl={facetsUrl} />
 
       <div className="ml-auto flex shrink-0 items-center gap-2">
         <ViewsMenu resourceName={resourceName} basePath={basePath} params={params} />

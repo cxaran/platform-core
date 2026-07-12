@@ -4,8 +4,10 @@ import assert from "node:assert/strict";
 import type { ResourceListCapability } from "@/core/api/contracts";
 import {
   FilterableContractError,
+  MULTI_VALUE_SEPARATOR,
   appendFilterableParams,
   buildFilterableControls,
+  expandMultiValueParams,
   parseFilterableValues,
 } from "./filterable.ts";
 
@@ -171,4 +173,82 @@ test("buildFilterableControls falla si daterange no declara parameters", () => {
     },
   ] as FilterableField[]);
   assert.throws(() => buildFilterableControls(list), FilterableContractError);
+});
+
+// --- Autofiltro por valores (in / value_shape multi) ---
+
+function multiList(withOptions: boolean): ResourceListCapability {
+  return makeList([
+    {
+      key: "status",
+      label: "Estado",
+      value_type: withOptions ? "enum" : "string",
+      facetable: true,
+      operators: [
+        {
+          key: "in",
+          label: "Cualquiera de",
+          value_shape: "multi",
+          widget: "multiselect",
+          parameter_name: "status_in",
+          multiple: true,
+          max_values: 3,
+          options: withOptions
+            ? [
+                { value: "queued", label: "En cola" },
+                { value: "running", label: "En curso" },
+                { value: "failed", label: "Fallida" },
+              ]
+            : undefined,
+        },
+      ],
+    },
+  ] as FilterableField[]);
+}
+
+test("multi: parsea el valor unido y también la forma repetida", () => {
+  const controls = buildFilterableControls(multiList(true));
+  const joined = ["queued", "failed"].join(MULTI_VALUE_SEPARATOR);
+  assert.deepEqual(parseFilterableValues({ status_in: joined }, controls), {
+    status_in: joined,
+  });
+  // Forma repetida (?status_in=a&status_in=b) → se normaliza a la unida.
+  assert.deepEqual(parseFilterableValues({ status_in: ["queued", "failed"] }, controls), {
+    status_in: joined,
+  });
+});
+
+test("multi: universo cerrado rechaza valores fuera de las opciones", () => {
+  const controls = buildFilterableControls(multiList(true));
+  const joined = ["queued", "forjado"].join(MULTI_VALUE_SEPARATOR);
+  assert.deepEqual(parseFilterableValues({ status_in: joined }, controls), {});
+});
+
+test("multi: respeta max_values del contrato", () => {
+  const controls = buildFilterableControls(multiList(true));
+  const joined = ["queued", "running", "failed", "queued"].join(MULTI_VALUE_SEPARATOR);
+  assert.deepEqual(parseFilterableValues({ status_in: joined }, controls), {});
+});
+
+test("multi: universo abierto acepta valores libres dentro del tope de longitud", () => {
+  const controls = buildFilterableControls(multiList(false));
+  const joined = ["Ana", "Beto"].join(MULTI_VALUE_SEPARATOR);
+  assert.deepEqual(parseFilterableValues({ status_in: joined }, controls), {
+    status_in: joined,
+  });
+});
+
+test("expandMultiValueParams divide el valor unido en parámetros repetidos", () => {
+  const controls = buildFilterableControls(multiList(true));
+  const params = new URLSearchParams();
+  appendFilterableParams(
+    params,
+    { status_in: ["queued", "failed"].join(MULTI_VALUE_SEPARATOR) },
+    controls,
+  );
+  // La URL de página conserva UN parámetro unido…
+  assert.equal([...params.getAll("status_in")].length, 1);
+  // …y la frontera con el API lo expande a repetidos.
+  const expanded = expandMultiValueParams(params);
+  assert.deepEqual(expanded.getAll("status_in"), ["queued", "failed"]);
 });

@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import type { FilterableFieldControl } from "@/core/resources/filterable";
 
+import { FacetChecklist } from "./FacetChecklist";
 import { fieldParameterNames } from "./filter-nav";
 
 /**
@@ -22,11 +23,15 @@ export function FilterEditor({
   field,
   values,
   onApply,
+  facetsUrl,
 }: Readonly<{
   field: FilterableFieldControl;
   // Valores activos actuales, keyed por nombre de parámetro real.
   values: Readonly<Record<string, string>>;
   onApply: (updates: Record<string, string | null>) => void;
+  // ``list.facets_url`` del contrato: habilita la checklist con conteos para los
+  // operadores múltiples de campos facetable (universo abierto).
+  facetsUrl?: string;
 }>) {
   const parameters = fieldParameterNames(field);
   const [draft, setDraft] = useState<Record<string, string>>(() => {
@@ -97,6 +102,28 @@ export function FilterEditor({
         }
 
         const parameter = operator.parameterName ?? "";
+        if (operator.valueShape === "multi") {
+          // Autofiltro por valores: checklist (universo cerrado por opciones del
+          // contrato, o abierto vía facetas). Los filtros activos de las DEMÁS
+          // columnas viajan en ``values`` para que los conteos los respeten.
+          return (
+            <div key={operator.key}>
+              <span className={LABEL_CLASS}>{operator.label}</span>
+              <FacetChecklist
+                fieldKey={field.key}
+                value={draft[parameter] ?? ""}
+                onChange={(joined) => setValue(parameter, joined)}
+                options={operator.options}
+                facets={
+                  field.facetable && facetsUrl
+                    ? { url: facetsUrl, params: values }
+                    : undefined
+                }
+                maxValues={operator.maxValues}
+              />
+            </div>
+          );
+        }
         if (operator.widget === "select") {
           return (
             <div key={operator.key}>

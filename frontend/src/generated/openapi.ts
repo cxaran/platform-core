@@ -889,6 +889,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/resources/{resource_name}/facets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Resource Facets
+         * @description Valores únicos + conteos de una columna bajo los filtros de las demás.
+         */
+        get: operations["get_resource_facets_api_v1_resources__resource_name__facets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/resources/{resource_name}/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Resource Stats
+         * @description Conteo + agregados de columnas numéricas bajo TODOS los filtros activos.
+         */
+        get: operations["get_resource_stats_api_v1_resources__resource_name__stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/resources/{resource_name}": {
         parameters: {
             query?: never;
@@ -2032,6 +2072,24 @@ export interface components {
             /** Files */
             files: components["schemas"]["DriveBackupFileRead"][];
         };
+        /** FacetValueRead */
+        FacetValueRead: {
+            /** Value */
+            value: string;
+            /** Count */
+            count: number;
+        };
+        /** FieldAggregatesRead */
+        FieldAggregatesRead: {
+            /** Sum */
+            sum?: number | null;
+            /** Avg */
+            avg?: number | null;
+            /** Min */
+            min?: number | null;
+            /** Max */
+            max?: number | null;
+        };
         /**
          * FieldValueType
          * @enum {string}
@@ -2046,7 +2104,7 @@ export interface components {
          * FilterValueShape
          * @enum {string}
          */
-        FilterValueShape: "single" | "range";
+        FilterValueShape: "single" | "range" | "multi";
         /**
          * FilterableFieldCapability
          * @description Campo filtrable y los operadores que expone (contrato visible de filtros).
@@ -2064,6 +2122,11 @@ export interface components {
             value_type: components["schemas"]["FieldValueType"];
             /** Operators */
             operators: components["schemas"]["FilterableOperatorCapability"][];
+            /**
+             * Facetable
+             * @default false
+             */
+            facetable: boolean;
         };
         /**
          * FilterableOperatorCapability
@@ -2546,6 +2609,19 @@ export interface components {
             /** Url Template */
             url_template: string;
         };
+        /** ResourceFacetsResponse */
+        ResourceFacetsResponse: {
+            /** Field */
+            field: string;
+            /** Values */
+            values: components["schemas"]["FacetValueRead"][];
+            /** Null Count */
+            null_count: number;
+            /** Has More */
+            has_more: boolean;
+            /** Limit */
+            limit: number;
+        };
         /** ResourceFieldCapability */
         ResourceFieldCapability: {
             /** Name */
@@ -2563,6 +2639,11 @@ export interface components {
             searchable: boolean;
             /** Filter Operators */
             filter_operators: components["schemas"]["FilterOperator"][];
+            /**
+             * Aggregable
+             * @default false
+             */
+            aggregable: boolean;
         };
         /**
          * ResourceFileDownloadCapability
@@ -2651,6 +2732,10 @@ export interface components {
             pagination: components["schemas"]["PaginationCapability"];
             search: components["schemas"]["SearchCapability"];
             sort: components["schemas"]["SortCapability"];
+            /** Facets Url */
+            facets_url?: string | null;
+            /** Stats Url */
+            stats_url?: string | null;
         };
         /**
          * ResourceRelatedListCapability
@@ -2699,6 +2784,15 @@ export interface components {
             /** Request Field */
             request_field: string;
             options: components["schemas"]["RelationOptionsSource"];
+        };
+        /** ResourceStatsResponse */
+        ResourceStatsResponse: {
+            /** Count */
+            count: number;
+            /** Fields */
+            fields: {
+                [key: string]: components["schemas"]["FieldAggregatesRead"];
+            };
         };
         /**
          * ResourceView
@@ -3630,6 +3724,9 @@ export interface operations {
                 entity_type?: string | null;
                 entity_id?: string | null;
                 id_in?: string[] | null;
+                action_in?: string[] | null;
+                entity_type_in?: string[] | null;
+                actor_user_id_in?: string[] | null;
                 occurred_at_on?: string | null;
                 occurred_at_before?: string | null;
                 occurred_at_after?: string | null;
@@ -4346,6 +4443,8 @@ export interface operations {
                 status?: components["schemas"]["BackupRunStatus"] | null;
                 trigger_kind?: components["schemas"]["BackupTriggerKind"] | null;
                 id_in?: string[] | null;
+                status_in?: components["schemas"]["BackupRunStatus"][] | null;
+                trigger_kind_in?: components["schemas"]["BackupTriggerKind"][] | null;
                 created_at_on?: string | null;
                 created_at_before?: string | null;
                 created_at_after?: string | null;
@@ -4959,6 +5058,76 @@ export interface operations {
             };
         };
     };
+    get_resource_facets_api_v1_resources__resource_name__facets_get: {
+        parameters: {
+            query: {
+                field: string;
+            };
+            header?: never;
+            path: {
+                resource_name: string;
+            };
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResourceFacetsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_resource_stats_api_v1_resources__resource_name__stats_get: {
+        parameters: {
+            query: {
+                fields: string;
+            };
+            header?: never;
+            path: {
+                resource_name: string;
+            };
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResourceStatsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_resource_capability_api_v1_resources__resource_name__get: {
         parameters: {
             query?: never;
@@ -5002,6 +5171,8 @@ export interface operations {
                 is_active?: boolean | null;
                 name?: string | null;
                 id_in?: string[] | null;
+                name_in?: string[] | null;
+                is_active_in?: boolean[] | null;
                 name_ne?: string | null;
                 name_contains?: string | null;
                 name_startswith?: string | null;
@@ -5705,6 +5876,9 @@ export interface operations {
                 email?: string | null;
                 name?: string | null;
                 id_in?: string[] | null;
+                name_in?: string[] | null;
+                email_in?: string[] | null;
+                is_active_in?: boolean[] | null;
                 name_ne?: string | null;
                 name_contains?: string | null;
                 name_startswith?: string | null;
