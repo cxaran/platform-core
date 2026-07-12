@@ -187,7 +187,14 @@ class CompiledQueryPlan:
         ``__query_sort_columns__`` es el conjunto PÚBLICO; el orderable del default
         del servidor es ese conjunto más la primary key (que ya no se publica sola)
         y los tie-breakers son la primary key por su clave de columna.
+
+        GUARD de completitud: esta ruta NO conoce los filtros extendidos de C1
+        (``_ne``/``_contains``/``_on``/``_from``…). Si el schema declara parámetros
+        que esta reconstrucción no sabe aplicar, aceptarlos y devolver resultados
+        SIN esos filtros sería una mentira silenciosa — se falla en configuración:
+        el caller debe pasar el plan explícito (``CompiledListQuery.plan``).
         """
+        _guard_reconstructible(query_type)
         sort_columns = query_type.__query_sort_columns__
         primary_keys = tuple(query_type.__query_primary_keys__)
         orderable_columns = dict(sort_columns)
@@ -221,4 +228,34 @@ class CompiledQueryPlan:
             primary_keys=primary_keys,
             max_sort_terms=query_type.__query_max_sort_terms__,
             filter_parameters=filter_parameters,
+        )
+
+
+def _guard_reconstructible(query_type: type[Any]) -> None:
+    """Falla si el schema tiene parámetros que ``from_schema`` no puede aplicar.
+
+    El conjunto reconstruible es exactamente: los reservados (``limit/offset/sort``
+    y ``q`` con búsqueda), el parámetro EQ de cada campo filtrable y los sufijos
+    heredados (``_gte``/``_lte`` de rango, ``_in``, ``_isnull``). Cualquier otro
+    parámetro (los extendidos de C1) exige el plan explícito de la factory.
+    """
+    expected: set[str] = {"limit", "offset", "sort"}
+    if query_type.__query_search_columns__:
+        expected.add("q")
+    expected.update(query_type.__query_columns__.keys())
+    for field_name in query_type.__query_range_fields__:
+        expected.add(f"{field_name}_gte")
+        expected.add(f"{field_name}_lte")
+    for field_name in query_type.__query_in_fields__:
+        expected.add(f"{field_name}_in")
+    for field_name in query_type.__query_null_filter_fields__:
+        expected.add(f"{field_name}_isnull")
+
+    unknown = sorted(set(query_type.model_fields) - expected)
+    if unknown:
+        fail_config(
+            "legacy_plan_missing_extended_filters",
+            "La ruta heredada (plan=None / from_schema) no puede aplicar los "
+            f"parámetros {unknown} del schema '{query_type.__name__}': pase el plan "
+            "explícito (CompiledListQuery.plan) para no ignorar filtros en silencio.",
         )

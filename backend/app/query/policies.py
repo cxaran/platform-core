@@ -15,9 +15,8 @@ from typing import Any
 from backend.app.query.fields import FieldSpec
 from backend.app.query.operators import Operator
 
-# Defaults heredados del factory actual (no se parametrizan en el Paso 1).
-_SEARCH_MIN_LEN = 2
-_SEARCH_MAX_LEN = 100
+# Default heredado del factory actual (no se parametriza en el Paso 1). Los límites
+# de búsqueda ya son configurables vía QueryOptions.search_min/max_length.
 _DEFAULT_LIMIT = 20
 
 
@@ -143,7 +142,9 @@ def policy_from_options(
             public_sort_fields=public_sort_fields,
             default_order=options.default_sort,
         ),
-        search=SearchConfig(min_len=_SEARCH_MIN_LEN, max_len=_SEARCH_MAX_LEN),
+        search=SearchConfig(
+            min_len=options.search_min_length, max_len=options.search_max_length
+        ),
         pagination=PaginationConfig(default_limit=_DEFAULT_LIMIT, max_limit=options.max_limit),
         limits=LimitsConfig(
             max_in_values=options.max_in_values,

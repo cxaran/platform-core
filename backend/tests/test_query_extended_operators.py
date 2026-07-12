@@ -50,7 +50,10 @@ from backend.app.query.compiler import apply_query_schema  # noqa: E402
 from backend.app.query.factory import compile_list_query  # noqa: E402
 from backend.app.query.operators import Operator  # noqa: E402
 from backend.app.query.options import QueryOptions  # noqa: E402
-from backend.app.query.validation import QuerySchemaConfigError  # noqa: E402
+from backend.app.query.validation import (  # noqa: E402
+    QueryParameterError,
+    QuerySchemaConfigError,
+)
 
 
 class _Base(DeclarativeBase):
@@ -251,6 +254,12 @@ class CalendarOperatorsTest(_RunnerMixin):
     def test_between_single_end_degrades_gracefully(self) -> None:
         self.assertEqual(self._run(created_at_from=date(2026, 6, 16)), {"r4"})
         self.assertEqual(self._run(created_at_to=date(2026, 6, 14)), {"r1"})
+
+    def test_between_inverted_range_is_rejected(self) -> None:
+        # from > to es casi siempre un error de captura: 422 honesto (invalid_range),
+        # no un conjunto vacío silencioso.
+        with self.assertRaisesRegex(QueryParameterError, "invalid_range"):
+            self._run(created_at_from=date(2026, 6, 16), created_at_to=date(2026, 6, 14))
 
 
 class AllowlistAndConfigTest(unittest.TestCase):

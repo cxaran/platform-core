@@ -3,7 +3,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 from types import UnionType
-from typing import Annotated, Any,  NoReturn, Union, cast, get_args, get_origin
+from typing import Annotated, Any, NoReturn, Union, cast, get_args, get_origin
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, SecretStr, create_model
@@ -174,7 +174,14 @@ def compile_list_query(
         for field_name in query_options.search_fields
     )
     if search_columns:
-        field_definitions["q"] = (str | None, Field(default=None, min_length=2, max_length=100))
+        field_definitions["q"] = (
+            str | None,
+            Field(
+                default=None,
+                min_length=query_options.search_min_length,
+                max_length=query_options.search_max_length,
+            ),
+        )
 
     default_sort = _default_sort(query_options, orderable_columns, primary_keys)
     field_definitions["limit"] = (int, Field(default=20, ge=1, le=query_options.max_limit))
@@ -578,9 +585,16 @@ def _validate_limits(options: QueryOptions) -> None:
         ("max_sort_terms", options.max_sort_terms),
         ("max_sort_length", options.max_sort_length),
         ("max_filter_text_length", options.max_filter_text_length),
+        ("search_min_length", options.search_min_length),
+        ("search_max_length", options.search_max_length),
     ):
         if value < 1:
             _fail("invalid_query_options", f"{field_name} debe ser mayor o igual a 1.")
+    if options.search_min_length > options.search_max_length:
+        _fail(
+            "invalid_query_options",
+            "search_min_length no puede ser mayor que search_max_length.",
+        )
 
 
 def _requested_fields(options: QueryOptions) -> tuple[str, ...]:

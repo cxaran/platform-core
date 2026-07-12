@@ -202,6 +202,15 @@ def _apply_calendar_between(
     assert descriptor.to_parameter is not None
     from_value = getattr(query, descriptor.from_parameter)
     to_value = getattr(query, descriptor.to_parameter)
+    # Rango invertido: 422 honesto en lugar de un conjunto vacío silencioso (casi
+    # siempre es un error de captura del usuario, no una consulta intencional).
+    if from_value is not None and to_value is not None and from_value > to_value:
+        _fail(
+            "invalid_range",
+            f"El rango de '{descriptor.field_name}' está invertido: "
+            f"'{descriptor.from_parameter}' no puede ser posterior a '{descriptor.to_parameter}'.",
+            field_name=descriptor.from_parameter,
+        )
     if from_value is not None:
         stmt = stmt.where(column >= day_start_utc(from_value, tz))
     if to_value is not None:

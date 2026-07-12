@@ -23,6 +23,12 @@ Los operadores de fecha (``on/before/after/between``) toman un valor ``date``
 (``YYYY-MM-DD``) y se compilan contra una columna ``datetime`` usando los límites de
 día en la zona horaria de aplicación (ver compiler). Para el usuario, ``between`` es
 inclusivo en ambos extremos.
+
+Semántica de texto — asimetría DELIBERADA: ``eq``/``ne`` comparan EXACTO y
+case-sensitive (son igualdad y su complemento), mientras que
+``contains/starts_with/ends_with`` son ILIKE case-insensitive (coincidencia
+parcial). No existe "distinto de, ignorando mayúsculas": sería una negación
+ambigua y queda fuera del contrato a propósito.
 """
 
 from datetime import date, datetime

@@ -48,6 +48,10 @@ class QueryOptions:
     max_sort_terms: int = 3
     max_sort_length: int = 200
     max_filter_text_length: int = 200
+    # Longitud del término de búsqueda global ``q`` (si hay search_fields). Antes
+    # eran constantes (2/100); configurables por recurso igual que el resto de límites.
+    search_min_length: int = 2
+    search_max_length: int = 100
 
     def to_policy(self, resource_schema: type[Any], orm_model: type[Any]) -> "QueryPolicy":
         """Traduce esta ``QueryOptions`` (API operativa) a una ``QueryPolicy``

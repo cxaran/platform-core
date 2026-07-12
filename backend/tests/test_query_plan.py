@@ -8,7 +8,7 @@ conserva su retorno histórico; plan=None mantiene el comportamiento actual.
 
 import unittest
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 from sqlalchemy import Integer, String, create_engine, func, select
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
@@ -17,7 +17,9 @@ from backend.app.query import (
     CompiledListQuery,
     CompiledQueryPlan,
     OffsetQuerySchema,
+    Operator,
     QueryOptions,
+    QuerySchemaConfigError,
     apply_query_schema,
     compile_list_query,
     make_offset_query_schema,
@@ -235,6 +237,73 @@ class FilterParametersTest(unittest.TestCase):
         clq = _compile()
         rebuilt = CompiledQueryPlan.from_schema(clq.schema)
         self.assertEqual(self._params(rebuilt), self._params(clq.plan))
+
+
+class LegacyPlanGuardTest(unittest.TestCase):
+    """La ruta heredada (plan=None → from_schema) no conoce los filtros extendidos de
+    C1: reconstruir un schema que los declara debe FALLAR en configuración, nunca
+    aceptar el parámetro y devolver resultados sin ese filtro en silencio."""
+
+    def _compile_extended(self) -> CompiledListQuery:
+        return compile_list_query(
+            name="WidgetExtendedQuery",
+            resource_schema=WidgetRead,
+            orm_model=Widget,
+            options=QueryOptions(
+                filter_fields=("name",),
+                field_operators={"name": (Operator.CONTAINS,)},
+            ),
+        )
+
+    def test_from_schema_rejects_extended_filter_parameters(self) -> None:
+        clq = self._compile_extended()
+        self.assertIn("name_contains", clq.schema.model_fields)  # el parámetro existe
+        with self.assertRaisesRegex(
+            QuerySchemaConfigError, "legacy_plan_missing_extended_filters"
+        ):
+            CompiledQueryPlan.from_schema(clq.schema)
+
+    def test_apply_without_plan_rejects_extended_schema(self) -> None:
+        clq = self._compile_extended()
+        query = clq.schema(name_contains="wid")  # type: ignore[call-arg]
+        with self.assertRaisesRegex(
+            QuerySchemaConfigError, "legacy_plan_missing_extended_filters"
+        ):
+            apply_query_schema(stmt=select(Widget), query=query, plan=None)
+
+    def test_plain_schema_still_reconstructs(self) -> None:
+        # Sin operadores extendidos, la ruta heredada sigue funcionando igual.
+        clq = _compile()
+        plan = CompiledQueryPlan.from_schema(clq.schema)
+        self.assertEqual(set(plan.filter_columns), set(clq.plan.filter_columns))
+
+
+class SearchLimitsTest(unittest.TestCase):
+    """Los límites del término de búsqueda ``q`` son configurables por recurso."""
+
+    def _schema(self, **overrides: object):
+        return compile_list_query(
+            name="WidgetSearchQuery",
+            resource_schema=WidgetRead,
+            orm_model=Widget,
+            options=QueryOptions(search_fields=("name",), **overrides),  # type: ignore[arg-type]
+        ).schema
+
+    def test_defaults_remain_two_to_one_hundred(self) -> None:
+        schema = self._schema()
+        with self.assertRaises(ValidationError):
+            schema(q="a")  # bajo el mínimo default (2)
+        self.assertEqual(schema(q="ab").q, "ab")
+
+    def test_custom_limits_apply(self) -> None:
+        schema = self._schema(search_min_length=1, search_max_length=5)
+        self.assertEqual(schema(q="a").q, "a")
+        with self.assertRaises(ValidationError):
+            schema(q="abcdef")  # sobre el máximo configurado (5)
+
+    def test_inverted_limits_fail_config(self) -> None:
+        with self.assertRaisesRegex(QuerySchemaConfigError, "invalid_query_options"):
+            self._schema(search_min_length=10, search_max_length=5)
 
 
 if __name__ == "__main__":
