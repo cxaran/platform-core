@@ -71,7 +71,13 @@ class _FakeChallengeStore:
         self.values: dict[str, str] = {}
         self.attempts: dict[str, int] = {}
 
-    def store(self, challenge_id: str, user_id: str, secret_hash: str) -> None:
+    def store(
+        self,
+        challenge_id: str,
+        user_id: str,
+        secret_hash: str,
+        ttl_seconds: int | None = None,
+    ) -> None:
         self.values[challenge_id] = f"{user_id}:{secret_hash}"
 
     def load(self, challenge_id: str):

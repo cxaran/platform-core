@@ -56,8 +56,11 @@ class LoginChallenge:
     mode: str
 
 
-def _ttl_seconds() -> int:
-    return settings.email_token_expire_minutes * 60
+def _ttl_seconds(minutes: int | None = None) -> int:
+    """TTL en segundos. ``minutes`` viene de la política efectiva cuando el llamador
+    tiene sesión de BD; sin él (p. ej. el contador interno de intentos en la
+    verificación, que no abre sesión) se usa el default del despliegue."""
+    return (minutes or settings.email_token_expire_minutes) * 60
 
 
 def _hash_secret(secret: str) -> str:
@@ -72,8 +75,14 @@ def _attempts_key(challenge_id: str) -> str:
     return f"{_ATTEMPTS_PREFIX}:{challenge_id}"
 
 
-def _store_challenge(challenge_id: str, user_id: str, secret_hash: str) -> None:
-    redis_client.setex(_challenge_key(challenge_id), _ttl_seconds(), f"{user_id}:{secret_hash}")
+def _store_challenge(
+    challenge_id: str, user_id: str, secret_hash: str, ttl_seconds: int | None = None
+) -> None:
+    redis_client.setex(
+        _challenge_key(challenge_id),
+        ttl_seconds if ttl_seconds is not None else _ttl_seconds(),
+        f"{user_id}:{secret_hash}",
+    )
 
 
 def _load_challenge(challenge_id: str) -> Optional[tuple[str, str]]:
@@ -153,24 +162,31 @@ async def start_login_challenge(
     el llamador responde el error honesto en lugar de dejar al usuario en limbo.
     """
     from backend.app.services.email_service import send_system_email
+    from backend.app.services.system_settings_service import (
+        email_token_minutes_effective,
+        project_display_name,
+    )
 
     challenge_id = secrets.token_urlsafe(32)
     secret = generate_secret(mode)
+    # Política efectiva (editable en runtime): vigencia del reto y nombre visible.
+    ttl_minutes = email_token_minutes_effective(session)
+    display_name = project_display_name(session)
 
     if mode == MODE_CODE:
-        subject = f"{settings.project_name}: código de inicio de sesión"
+        subject = f"{display_name}: código de inicio de sesión"
         message = (
             f"Hola {user.name}, tu código de inicio de sesión es: {secret}\n\n"
-            f"Caduca en {settings.email_token_expire_minutes} minutos. Si no "
+            f"Caduca en {ttl_minutes} minutos. Si no "
             "intentaste iniciar sesión, ignora este correo."
         )
     else:
         link = f"{verification_base_url(session, request)}/login/verify?token={secret}"
-        subject = f"{settings.project_name}: enlace de inicio de sesión"
+        subject = f"{display_name}: enlace de inicio de sesión"
         message = (
             f"Hola {user.name}, confirma tu inicio de sesión abriendo este enlace "
             f"EN EL MISMO NAVEGADOR donde lo iniciaste:\n\n{link}\n\n"
-            f"Caduca en {settings.email_token_expire_minutes} minutos. Si no "
+            f"Caduca en {ttl_minutes} minutos. Si no "
             "intentaste iniciar sesión, ignora este correo."
         )
 
@@ -179,12 +195,12 @@ async def start_login_challenge(
         logger.warning("login verification email failed: %s", outcome.error_code)
         return False
 
-    _store_challenge(challenge_id, str(user.id), _hash_secret(secret))
+    _store_challenge(challenge_id, str(user.id), _hash_secret(secret), _ttl_seconds(ttl_minutes))
     response.set_cookie(
         key=CHALLENGE_COOKIE_KEY,
         value=challenge_id,
         httponly=True,
-        max_age=_ttl_seconds(),
+        max_age=_ttl_seconds(ttl_minutes),
         samesite="lax",
         secure=settings.environment == "production",
         path="/",

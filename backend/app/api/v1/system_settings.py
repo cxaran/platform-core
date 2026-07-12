@@ -10,7 +10,7 @@ checklist.
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Query, Request, status
+from fastapi import APIRouter, File, Query, Request, UploadFile, status
 
 from backend.app.api.resource_actions import api_error, get_or_404, paginate_resource
 from backend.app.auth.auth_dependencies import CurrentUser
@@ -44,16 +44,43 @@ def _serialize_read(session: SessionDep, row: SystemSettings) -> SystemSettingsR
     return SystemSettingsRead(
         id=row.id,
         public_registration_enabled=row.public_registration_enabled,
-        registration_allowed_by_deployment=settings.registration_allowed_effective,
         public_registration_effective=system.is_public_registration_enabled(session),
         app_base_url=row.app_base_url,
         app_base_url_verified_at=row.app_base_url_verified_at,
         institution_name=row.institution_name,
+        brand_logo_configured=row.brand_logo_content is not None,
+        brand_logo_updated_at=row.brand_logo_updated_at,
         login_verification_mode=row.login_verification_mode,
         google_login_enabled=row.google_login_enabled,
         google_auth_client_id=row.google_auth_client_id,
         google_auth_client_secret_configured=row.google_auth_client_secret_ciphertext is not None,
         password_reset_enabled=row.password_reset_enabled,
+        customer_session_days=row.customer_session_days,
+        staff_session_minutes=row.staff_session_minutes,
+        customer_session_days_effective=(
+            row.customer_session_days or settings.customer_session_expire_days
+        ),
+        staff_session_minutes_effective=(
+            row.staff_session_minutes or settings.access_token_expire_minutes
+        ),
+        login_attempts_before_lock=row.login_attempts_before_lock,
+        email_token_minutes=row.email_token_minutes,
+        application_timezone=row.application_timezone,
+        agent_ticket_ttl_seconds=row.agent_ticket_ttl_seconds,
+        agent_lease_ttl_seconds=row.agent_lease_ttl_seconds,
+        login_attempts_before_lock_effective=(
+            row.login_attempts_before_lock or settings.trys_before_lock
+        ),
+        email_token_minutes_effective=(
+            row.email_token_minutes or settings.email_token_expire_minutes
+        ),
+        application_timezone_effective=system.application_timezone_effective(session),
+        agent_ticket_ttl_seconds_effective=(
+            row.agent_ticket_ttl_seconds or settings.agent_gateway_ticket_ttl_seconds
+        ),
+        agent_lease_ttl_seconds_effective=(
+            row.agent_lease_ttl_seconds or settings.agent_gateway_lease_ttl_seconds
+        ),
         email_mode=row.email_mode,
         email_from_address=row.email_from_address,
         email_from_name=row.email_from_name,
@@ -68,6 +95,10 @@ def _serialize_read(session: SessionDep, row: SystemSettings) -> SystemSettingsR
         email_last_test_status=row.email_last_test_status,
         email_last_test_error=row.email_last_test_error,
         email_transport_reason=transport_unavailable_reason(row),
+        analytics_enabled=row.analytics_enabled,
+        analytics_ga4_measurement_id=row.analytics_ga4_measurement_id,
+        analytics_require_consent=row.analytics_require_consent,
+        analytics_debug_mode=row.analytics_debug_mode,
         environment=settings.environment,
         created_at=row.created_at,
         updated_at=row.updated_at,
@@ -222,15 +253,17 @@ async def send_test_email(
     desenlace (email_last_test_*): el checklist marca el correo como verificado
     solo tras un test exitoso."""
     from backend.app.services.email_service import send_system_email
+    from backend.app.services.system_settings_service import project_display_name
 
     row = get_or_404(session, SystemSettings, item_id, _NOT_FOUND)
     recipient = payload.recipient or current_user.email
+    display_name = project_display_name(session)
     outcome = await send_system_email(
         session,
-        subject=f"{settings.project_name}: correo de prueba",
+        subject=f"{display_name}: correo de prueba",
         email_to=recipient,
         message=(
-            f"Este es un correo de PRUEBA de {settings.project_name} para verificar "
+            f"Este es un correo de PRUEBA de {display_name} para verificar "
             f"el transporte configurado (modo: {row.email_mode}). Si lo recibiste, "
             "el correo saliente funciona."
         ),
@@ -278,16 +311,6 @@ def update_system_settings(
     if not data:
         return _serialize_read(session, row)
 
-    # Candado de despliegue: activar el registro con el gate cerrado sería un switch
-    # sin efecto — se rechaza con la causa en lugar de fingir que quedó activo.
-    if data.get("public_registration_enabled") is True and not settings.registration_allowed_effective:
-        api_error(
-            status.HTTP_409_CONFLICT,
-            "registration_locked_by_deployment",
-            "El despliegue no permite registro público (REGISTRATION_ALLOWED). "
-            "Actívalo en el entorno antes de habilitarlo aquí.",
-        )
-
     # Activar la verificación de login exige un transporte de correo UTILIZABLE:
     # sin correo no llegan los códigos y los usuarios sin cobertura administrativa
     # quedarían fuera (los administradores completos están exentos por diseño).
@@ -319,6 +342,20 @@ def update_system_settings(
                 "habilitar el inicio de sesión con Google.",
             )
 
+    # Activar la analítica exige un ID de medición (en la fila o en este mismo
+    # PATCH): un switch sin ID sería medición muerta que aparenta funcionar.
+    if data.get("analytics_enabled") is True:
+        has_measurement_id = bool(
+            data.get("analytics_ga4_measurement_id") or row.analytics_ga4_measurement_id
+        )
+        if not has_measurement_id:
+            api_error(
+                status.HTTP_409_CONFLICT,
+                "analytics_requires_measurement_id",
+                "Configura el ID de medición de GA4 (G-XXXXXXXXXX) antes de "
+                "habilitar la analítica del sitio.",
+            )
+
     # Secretos WRITE-ONLY: valor -> cifrar y reemplazar; null -> borrar; omitido ->
     # conservar. Nunca pasan por setattr (no existen como columnas en claro).
     from backend.app.services.secret_cipher import SecretCipherError, encrypt_secret
@@ -348,6 +385,108 @@ def update_system_settings(
         entity_id=row.id,
         action="system_settings_updated",
         changed_fields=changed_field_names,
+    )
+    session.commit()
+    session.refresh(row)
+    # La zona horaria cambia la semántica de los filtros de calendario: se invalida el
+    # caché del proceso para que aplique de inmediato (otros workers la recogen por TTL).
+    if "application_timezone" in changed_field_names:
+        system.invalidate_application_timezone_cache()
+    return _serialize_read(session, row)
+
+
+# --- Logo de la instalación (marca de la PWA) ---------------------------------------
+
+# Tope del archivo del logo. Suficiente para cualquier logo raster razonable;
+# protege la fila singleton (el binario viaja en cada lectura administrativa).
+_LOGO_MAX_BYTES = 2 * 1024 * 1024
+# Formatos raster ADMITIDOS (Pillow los identifica del CONTENIDO; el mime que se
+# guarda deriva del formato real, nunca del header del cliente). SVG queda
+# bloqueado por diseño: jamás se sirve markup como imagen de marca.
+_LOGO_MIME_BY_FORMAT = {"PNG": "image/png", "JPEG": "image/jpeg", "WEBP": "image/webp"}
+
+
+@router.put("/system-settings/{item_id}/logo", response_model=SystemSettingsRead)
+async def upload_brand_logo(
+    item_id: UUID,
+    session: SessionDep,
+    current_user: CurrentUser,
+    _: SystemSettingsPermissions.CONFIGURE.requiere,
+    file: UploadFile = File(...),
+) -> SystemSettingsRead:
+    """Sube (o reemplaza) el logo de la instalación para el manifest de la PWA.
+
+    El contenido se VERIFICA con Pillow antes de guardar: solo PNG/JPEG/WEBP
+    reales. La auditoría registra el cambio sin el binario.
+    """
+    import io
+
+    from PIL import Image, UnidentifiedImageError
+
+    row = get_or_404(session, SystemSettings, item_id, _NOT_FOUND)
+    content = await file.read()
+    if not content:
+        api_error(status.HTTP_422_UNPROCESSABLE_ENTITY, "logo_vacio", "El archivo está vacío.")
+    if len(content) > _LOGO_MAX_BYTES:
+        api_error(
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            "logo_demasiado_grande",
+            "El logo no puede superar los 2 MB.",
+        )
+    try:
+        with Image.open(io.BytesIO(content)) as image:
+            detected = (image.format or "").upper()
+    except (UnidentifiedImageError, OSError, ValueError):
+        detected = ""
+    mime = _LOGO_MIME_BY_FORMAT.get(detected)
+    if mime is None:
+        api_error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "logo_formato_invalido",
+            "El logo debe ser una imagen PNG, JPEG o WEBP (SVG no se admite).",
+        )
+
+    row.brand_logo_content = content
+    row.brand_logo_mime = mime
+    row.brand_logo_updated_at = utc_now()
+    row.updated_by = current_user.id
+    row.updated_at = utc_now()
+    session.add(row)
+    record_config_change(
+        session,
+        actor_user_id=current_user.id,
+        entity_type="system_settings",
+        entity_id=row.id,
+        action="system_settings_updated",
+        changed_fields=["brand_logo"],
+    )
+    session.commit()
+    session.refresh(row)
+    return _serialize_read(session, row)
+
+
+@router.delete("/system-settings/{item_id}/logo", response_model=SystemSettingsRead)
+def delete_brand_logo(
+    item_id: UUID,
+    session: SessionDep,
+    current_user: CurrentUser,
+    _: SystemSettingsPermissions.CONFIGURE.requiere,
+) -> SystemSettingsRead:
+    """Quita el logo: el manifest vuelve a los íconos placeholder."""
+    row = get_or_404(session, SystemSettings, item_id, _NOT_FOUND)
+    row.brand_logo_content = None
+    row.brand_logo_mime = None
+    row.brand_logo_updated_at = None
+    row.updated_by = current_user.id
+    row.updated_at = utc_now()
+    session.add(row)
+    record_config_change(
+        session,
+        actor_user_id=current_user.id,
+        entity_type="system_settings",
+        entity_id=row.id,
+        action="system_settings_updated",
+        changed_fields=["brand_logo"],
     )
     session.commit()
     session.refresh(row)

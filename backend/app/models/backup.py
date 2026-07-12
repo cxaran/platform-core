@@ -105,6 +105,25 @@ class BackupSettings(Base):
         comment="Copias anuales a conservar en Drive (0-50).",
     )
 
+    # -- Reintentos y lease del worker (política editable; NULL = default del despliegue)
+    run_lease_minutes: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        comment=(
+            "Minutos del lease de una ejecución RUNNING antes de considerarla "
+            "huérfana y recuperarla. NULL = default del despliegue "
+            "(BACKUP_RUN_LEASE_MINUTES)."
+        ),
+    )
+    max_attempts: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        comment=(
+            "Intentos máximos de una ejecución antes de marcarla fallida. NULL = "
+            "default del despliegue (BACKUP_MAX_ATTEMPTS)."
+        ),
+    )
+
     age_recipient: Mapped[Optional[str]] = mapped_column(
         Text,
         nullable=True,
@@ -127,7 +146,7 @@ class BackupSettings(Base):
     google_drive_client_id: Mapped[Optional[str]] = mapped_column(
         String(255),
         nullable=True,
-        comment="Client ID del OAuth de Google (editable en la UI; el entorno actúa como fallback).",
+        comment="Client ID del OAuth de Google (capturado en la UI; única fuente: esta fila).",
     )
     google_drive_client_secret_ciphertext: Mapped[Optional[str]] = mapped_column(
         Text,

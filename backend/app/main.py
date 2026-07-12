@@ -39,8 +39,27 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
         pass
 
 
+# Versión pública de la API expuesta en OpenAPI (independiente del despliegue).
+# Súbela al introducir cambios incompatibles en los contratos de la API.
+API_VERSION = "1.0.0"
+
+# Descripción en Markdown que ReDoc y Swagger UI renderizan en la portada de la
+# documentación. Redactada en español, como el resto de los mensajes de la API.
+API_DESCRIPTION = """\
+Base de plataforma (FastAPI + Next.js, self-hosted, instalación única):
+autenticación por sesión, RBAC declarado en código, administración por contrato
+y respaldos cifrados.
+
+Todas las rutas se montan bajo `/api/v1`. La autenticación acepta una **cookie
+`session_token` httponly** o un **Bearer token**; los permisos se exigen por
+recurso (RBAC declarado en código).
+"""
+
 app = FastAPI(
     title=settings.project_name,
+    summary="API de la plataforma base (autenticación, RBAC y administración por contrato).",
+    description=API_DESCRIPTION,
+    version=API_VERSION,
     docs_url="/api/docs",
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
@@ -51,5 +70,21 @@ app = FastAPI(
 # registre también las solicitudes rechazadas por origen.
 app.add_middleware(MutationOriginGuardMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
+
+# Renovación deslizante de sesión: pasada la mitad de la vida del JWT, la
+# cookie se re-emite con el mismo ttl/jti (ver backend/app/auth/session_refresh.py).
+from backend.app.auth.session_refresh import sliding_session_middleware  # noqa: E402
+
+app.middleware("http")(sliding_session_middleware)
 register_exception_handlers(app)
 app.include_router(api_router)
+
+# Zona horaria de calendario como POLÍTICA editable: se registra el resolver cacheado
+# de system_settings en el motor de query (sin resolver, el motor usa el snapshot del
+# entorno — mismo comportamiento histórico, p. ej. en tests unitarios del motor).
+from backend.app.query.compiler import set_calendar_timezone_resolver  # noqa: E402
+from backend.app.services.system_settings_service import (  # noqa: E402
+    cached_application_timezone,
+)
+
+set_calendar_timezone_resolver(cached_application_timezone)

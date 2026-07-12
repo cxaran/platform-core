@@ -80,6 +80,28 @@ class BackupSettingsUpdate(ApiPatchSchema):
         title="Copias anuales",
         json_schema_extra={"ui": {"form": True, "widget": "number"}},
     )
+    run_lease_minutes: Optional[int] = Field(
+        default=None,
+        ge=10,
+        le=1440,
+        title="Lease de ejecución (minutos)",
+        description=(
+            "Tiempo antes de considerar huérfana una ejecución en curso y "
+            "recuperarla. Vacío = default del despliegue."
+        ),
+        json_schema_extra={"ui": {"form": True, "widget": "number"}},
+    )
+    max_attempts: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=10,
+        title="Intentos máximos",
+        description=(
+            "Reintentos de una ejecución antes de marcarla fallida. Vacío = "
+            "default del despliegue."
+        ),
+        json_schema_extra={"ui": {"form": True, "widget": "number"}},
+    )
     explorer_enabled: Optional[bool] = Field(
         default=None,
         title="Artefacto de exploración",
@@ -127,13 +149,15 @@ class BackupSettingsRead(ApiReadSchema):
     retention_daily_count: int
     retention_monthly_count: int
     retention_yearly_count: int
+    run_lease_minutes: Optional[int] = None
+    max_attempts: Optional[int] = None
     age_recipient: Optional[str] = None
     age_recipient_fingerprint: Optional[str] = None
     explorer_enabled: bool
     google_drive_client_id: Optional[str] = None
     google_drive_client_secret_configured: bool
-    # Redirect URI calculado (env override o derivado del dominio verificado): la UI
-    # lo muestra para copiarlo al crear el cliente en Google Cloud.
+    # Redirect URI calculado (derivado del dominio base verificado): la UI lo
+    # muestra para copiarlo al crear el cliente en Google Cloud.
     google_drive_redirect_uri: Optional[str] = None
     drive_status: BackupDriveStatus
     drive_folder_id: Optional[str] = None

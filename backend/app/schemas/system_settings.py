@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from backend.app.schemas.base import ApiPatchSchema, ApiReadSchema
 
@@ -55,6 +55,29 @@ class SystemSettingsUpdate(ApiPatchSchema):
             }
         },
     )
+    customer_session_days: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=365,
+        title="Sesión del cliente (días)",
+        description=(
+            "Cuánto dura la sesión de un CLIENTE (usuario sin roles). La renovación "
+            "deslizante la extiende con la actividad: un cliente que compra una vez "
+            "al mes no vuelve a iniciar sesión. Vacío = default del despliegue."
+        ),
+        json_schema_extra={"ui": {"form": True, "widget": "number"}},
+    )
+    staff_session_minutes: Optional[int] = Field(
+        default=None,
+        ge=5,
+        le=1440,
+        title="Sesión del personal (minutos)",
+        description=(
+            "Cuánto dura la sesión de un usuario CON roles (panel/admin) sin "
+            "actividad; con actividad se renueva sola. Vacío = default del despliegue."
+        ),
+        json_schema_extra={"ui": {"form": True, "widget": "number"}},
+    )
     password_reset_enabled: Optional[bool] = Field(
         default=None,
         title="Recuperación de contraseña",
@@ -65,6 +88,81 @@ class SystemSettingsUpdate(ApiPatchSchema):
         ),
         json_schema_extra={"ui": {"form": True, "widget": "switch"}},
     )
+    login_attempts_before_lock: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=50,
+        title="Intentos antes de bloquear",
+        description=(
+            "Intentos fallidos de inicio de sesión antes de bloquear la cuenta "
+            "temporalmente. Vacío = default del despliegue."
+        ),
+        json_schema_extra={"ui": {"form": True, "widget": "number"}},
+    )
+    email_token_minutes: Optional[int] = Field(
+        default=None,
+        ge=5,
+        le=1440,
+        title="Vigencia de tokens por correo (minutos)",
+        description=(
+            "Cuánto duran los tokens enviados por correo (registro, recuperación de "
+            "contraseña, verificación de login). Vacío = default del despliegue."
+        ),
+        json_schema_extra={"ui": {"form": True, "widget": "number"}},
+    )
+    application_timezone: Optional[str] = Field(
+        default=None,
+        min_length=1,
+        max_length=64,
+        title="Zona horaria de la instalación",
+        description=(
+            "Zona IANA (p. ej. America/Monterrey, America/Mexico_City, UTC): define "
+            "los límites de día de los filtros de calendario. Vacío = default del "
+            "despliegue. El cambio aplica en segundos, sin reiniciar."
+        ),
+        json_schema_extra={"ui": {"form": True, "widget": "text"}},
+    )
+    agent_ticket_ttl_seconds: Optional[int] = Field(
+        default=None,
+        ge=30,
+        le=3600,
+        title="Copiloto: vigencia del ticket (segundos)",
+        description=(
+            "Vigencia del ticket de conexión al copiloto (solo dura el handshake). "
+            "Vacío = default del despliegue."
+        ),
+        json_schema_extra={"ui": {"form": True, "widget": "number"}},
+    )
+    agent_lease_ttl_seconds: Optional[int] = Field(
+        default=None,
+        ge=60,
+        le=3600,
+        title="Copiloto: vigencia del arriendo de credencial (segundos)",
+        description=(
+            "Vigencia del secreto de proveedor de IA arrendado por turno. Vacío = "
+            "default del despliegue."
+        ),
+        json_schema_extra={"ui": {"form": True, "widget": "number"}},
+    )
+
+    @field_validator("application_timezone")
+    @classmethod
+    def _validate_iana_timezone(cls, value: Optional[str]) -> Optional[str]:
+        """La zona debe ser IANA válida: una zona rota rompería los filtros de fecha."""
+        if value is None:
+            return value
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+        candidate = value.strip()
+        if not candidate:
+            return None
+        try:
+            ZoneInfo(candidate)
+        except (ZoneInfoNotFoundError, ValueError) as error:
+            raise ValueError(
+                "Zona horaria inválida: usa un nombre IANA como America/Monterrey o UTC."
+            ) from error
+        return candidate
     email_mode: Optional[Literal["environment", "smtp", "resend"]] = Field(
         default=None,
         title="Transporte de correo",
@@ -130,6 +228,46 @@ class SystemSettingsUpdate(ApiPatchSchema):
         title="SSL directo",
         json_schema_extra={"ui": {"form": True, "widget": "switch"}},
     )
+    analytics_enabled: Optional[bool] = Field(
+        default=None,
+        title="Analítica del sitio (GA4)",
+        description=(
+            "Medir visitas y acciones del sitio público con Google Analytics 4. "
+            "Requiere el ID de medición. El panel y el admin nunca se miden. "
+            "Guía completa: docs/producto/puesta-en-marcha.md."
+        ),
+        json_schema_extra={"ui": {"form": True, "widget": "switch"}},
+    )
+    analytics_ga4_measurement_id: Optional[str] = Field(
+        default=None,
+        min_length=6,
+        max_length=30,
+        pattern=r"^G-[A-Z0-9]{4,26}$",
+        title="ID de medición de GA4",
+        description=(
+            "Formato G-XXXXXXXXXX. En Google Analytics: Administración → Flujos de "
+            "datos → tu flujo web → ID de medición. Es un identificador público."
+        ),
+        json_schema_extra={"ui": {"form": True, "widget": "text"}},
+    )
+    analytics_require_consent: Optional[bool] = Field(
+        default=None,
+        title="Exigir consentimiento de cookies",
+        description=(
+            "Mostrar un aviso de cookies analíticas: hasta que el visitante acepte "
+            "no se carga Google Analytics ni se envía ningún evento."
+        ),
+        json_schema_extra={"ui": {"form": True, "widget": "switch"}},
+    )
+    analytics_debug_mode: Optional[bool] = Field(
+        default=None,
+        title="Modo de depuración (DebugView)",
+        description=(
+            "Enviar los eventos marcados para GA4 DebugView y así validar la "
+            "medición. Apagar en operación normal."
+        ),
+        json_schema_extra={"ui": {"form": True, "widget": "switch"}},
+    )
     google_login_enabled: Optional[bool] = Field(
         default=None,
         title="Inicio de sesión con Google",
@@ -177,18 +315,35 @@ class SystemSettingsRead(ApiReadSchema):
 
     id: uuid.UUID
     public_registration_enabled: bool
-    # Política efectiva y candado del despliegue (solo lectura, para que la UI
-    # explique por qué el switch puede no tener efecto).
-    registration_allowed_by_deployment: bool
+    # Política efectiva (solo lectura; hoy coincide con la persistida).
     public_registration_effective: bool
     app_base_url: Optional[str] = None
     app_base_url_verified_at: Optional[datetime] = None
     institution_name: Optional[str] = None
+    # Logo de la instalación (metadato; el binario JAMÁS se proyecta aquí).
+    brand_logo_configured: bool
+    brand_logo_updated_at: Optional[datetime] = None
     login_verification_mode: str
     google_login_enabled: bool
     google_auth_client_id: Optional[str] = None
     google_auth_client_secret_configured: bool
     password_reset_enabled: bool
+    # Duración de sesión (None = default del despliegue); efectivos abajo.
+    customer_session_days: Optional[int] = None
+    staff_session_minutes: Optional[int] = None
+    customer_session_days_effective: int
+    staff_session_minutes_effective: int
+    # Política operativa (None = default del despliegue); efectivos abajo.
+    login_attempts_before_lock: Optional[int] = None
+    email_token_minutes: Optional[int] = None
+    application_timezone: Optional[str] = None
+    agent_ticket_ttl_seconds: Optional[int] = None
+    agent_lease_ttl_seconds: Optional[int] = None
+    login_attempts_before_lock_effective: int
+    email_token_minutes_effective: int
+    application_timezone_effective: str
+    agent_ticket_ttl_seconds_effective: int
+    agent_lease_ttl_seconds_effective: int
     # Correo: estado SEGURO (metadata; los secretos jamás se proyectan).
     email_mode: str
     email_from_address: Optional[str] = None
@@ -205,6 +360,11 @@ class SystemSettingsRead(ApiReadSchema):
     email_last_test_error: Optional[str] = None
     # Derivado con la MISMA regla que usa el envío (None = transporte utilizable).
     email_transport_reason: Optional[str] = None
+    # Analítica del sitio público (GA4; sin secretos involucrados).
+    analytics_enabled: bool
+    analytics_ga4_measurement_id: Optional[str] = None
+    analytics_require_consent: bool
+    analytics_debug_mode: bool
     environment: str
     created_at: datetime
     updated_at: Optional[datetime] = None
@@ -255,6 +415,21 @@ class VerifyDomainRequest(ApiPatchSchema):
         description="https://tu-dominio; vacío = el dominio por el que navegas ahora.",
         json_schema_extra={"ui": {"form": True, "widget": "text"}},
     )
+
+
+class PublicAnalyticsConfig(ApiReadSchema):
+    """Config PÚBLICA de analítica para el sitio (GET /public/site/analytics).
+
+    Apagada, solo devuelve ``enabled: false`` (sin ID ni opciones). El ID de
+    medición de GA4 es público por diseño de Google; jamás viaja aquí ningún
+    secreto (las claves de Measurement Protocol, si algún día existen, son
+    exclusivas del servidor).
+    """
+
+    enabled: bool
+    measurement_id: Optional[str] = None
+    require_consent: bool = True
+    debug_mode: bool = False
 
 
 class SetupChecklistItemRead(ApiReadSchema):

@@ -1,4 +1,4 @@
-from typing import Any, NoReturn
+from typing import Any, Callable, NoReturn
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import Select
@@ -13,6 +13,32 @@ from backend.app.query.search import escape_like
 from backend.app.query.validation import fail_query
 
 QueryableColumn = ColumnElement[Any] | InstrumentedAttribute[Any]
+
+# --- Resolver INYECTABLE de la zona horaria de calendario ---------------------------
+#
+# El plan compilado congela ``calendar_timezone`` al importar (snapshot del entorno).
+# Para que la zona sea POLÍTICA editable en runtime (system_settings) sin acoplar el
+# motor de query a la capa de servicios, la app puede registrar aquí un resolver que
+# devuelva la zona efectiva vigente (con su propio caché). Sin resolver registrado —
+# o si el registrado falla o devuelve una zona inválida — se usa la del plan, que es
+# exactamente el comportamiento histórico.
+
+_calendar_timezone_resolver: Callable[[], str] | None = None
+
+
+def set_calendar_timezone_resolver(resolver: Callable[[], str] | None) -> None:
+    """Registra (o retira, con ``None``) el resolver de zona horaria efectiva."""
+    global _calendar_timezone_resolver
+    _calendar_timezone_resolver = resolver
+
+
+def _resolve_calendar_tz(plan_timezone: str) -> ZoneInfo:
+    if _calendar_timezone_resolver is not None:
+        try:
+            return ZoneInfo(_calendar_timezone_resolver())
+        except Exception:  # zona inválida o resolver caído: snapshot del plan
+            pass
+    return ZoneInfo(plan_timezone)
 
 
 def apply_query_schema(
@@ -86,10 +112,11 @@ def _apply_extended_filters(
 ) -> Select[Any]:
     """Aplica los operadores extendidos de C1 (texto y fecha de calendario).
 
-    La zona horaria de calendario se resuelve una sola vez por request desde el plan.
+    La zona horaria de calendario se resuelve una sola vez por request: la efectiva
+    del resolver registrado (política editable) o, sin él, la del plan (snapshot).
     Cada descriptor se omite si su(s) parámetro(s) vienen ``None`` (no enviados).
     """
-    tz = ZoneInfo(plan.calendar_timezone)
+    tz = _resolve_calendar_tz(plan.calendar_timezone)
     for descriptor in plan.extended_filters:
         column = descriptor.column
         operator = descriptor.operator

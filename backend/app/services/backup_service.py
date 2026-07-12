@@ -293,15 +293,12 @@ def missing_configuration(settings_row: BackupSettings) -> list[str]:
         missing.append("drive_connection")
     if not settings_row.drive_folder_id:
         missing.append("drive_folder_id")
-    if settings.backup_token_encryption_key is None:
-        missing.append("backup_token_encryption_key")
-    has_client_id = bool(
-        settings_row.google_drive_client_id or settings.google_drive_client_id
-    )
-    has_client_secret = bool(
-        settings_row.google_drive_client_secret_ciphertext
-        or settings.google_drive_client_secret is not None
-    )
+    from backend.app.services.secret_cipher import has_encryption_key
+
+    if not has_encryption_key():
+        missing.append("app_encryption_key")
+    has_client_id = bool(settings_row.google_drive_client_id)
+    has_client_secret = bool(settings_row.google_drive_client_secret_ciphertext)
     if not has_client_id or not has_client_secret:
         missing.append("google_oauth_client")
     return missing
@@ -344,10 +341,8 @@ DRIVE_CALLBACK_PATH = "/api/v1/backups/google-drive/callback"
 
 
 def resolve_drive_redirect_uri(session: Session) -> Optional[str]:
-    """Redirect URI del OAuth de Drive: el env (override de despliegue) o DERIVADO
-    del dominio base verificado; ``None`` si no hay ninguno."""
-    if settings.google_drive_redirect_uri:
-        return settings.google_drive_redirect_uri
+    """Redirect URI del OAuth de Drive: DERIVADO del dominio base verificado
+    (``system_settings.app_base_url``); ``None`` mientras no haya dominio."""
     from backend.app.services.system_settings_service import get_system_settings
 
     system = get_system_settings(session)
@@ -359,19 +354,17 @@ def resolve_drive_redirect_uri(session: Session) -> Optional[str]:
 def resolve_drive_oauth(session: Session) -> tuple[str, str, str]:
     """(client_id, client_secret, redirect_uri) del OAuth de Drive.
 
-    Las credenciales guardadas en la fila (UI) tienen prioridad; las variables de
-    entorno actúan como fallback/override de despliegue (IaC). Lanza
-    ``BackupPermanentError`` con la causa exacta si falta algo.
+    Las credenciales viven ÚNICAMENTE en la fila (capturadas en la UI; el secret
+    cifrado con la clave maestra) y el redirect se deriva del dominio verificado.
+    Lanza ``BackupPermanentError`` con la causa exacta si falta algo.
     """
     config = get_backup_settings(session)
-    client_id = config.google_drive_client_id or settings.google_drive_client_id
+    client_id = config.google_drive_client_id
     client_secret: Optional[str] = None
     if config.google_drive_client_secret_ciphertext:
         from backend.app.services.secret_cipher import decrypt_secret
 
         client_secret = decrypt_secret(config.google_drive_client_secret_ciphertext)
-    if client_secret is None and settings.google_drive_client_secret is not None:
-        client_secret = settings.google_drive_client_secret.get_secret_value()
     redirect_uri = resolve_drive_redirect_uri(session)
 
     missing = []
@@ -401,6 +394,27 @@ def get_backup_settings(session: Session, *, for_update: bool = False) -> Backup
             "settings_missing", "No existe la configuración de respaldos (migración pendiente)."
         )
     return row
+
+
+def run_lease_minutes_effective(session: Session) -> int:
+    """Lease (minutos) de una ejecución: política en BD o default del despliegue.
+
+    Nunca lanza: si la fila singleton falta (instalación a medias), usa el default —
+    el worker no debe morir por leer una política opcional."""
+    try:
+        stored = get_backup_settings(session).run_lease_minutes
+    except BackupPermanentError:
+        stored = None
+    return stored or settings.backup_run_lease_minutes
+
+
+def max_attempts_effective(session: Session) -> int:
+    """Intentos máximos de una ejecución: política en BD o default del despliegue."""
+    try:
+        stored = get_backup_settings(session).max_attempts
+    except BackupPermanentError:
+        stored = None
+    return stored or settings.backup_max_attempts
 
 
 def start_drive_connection(session: Session, user_id: uuid.UUID) -> str:
@@ -676,7 +690,7 @@ class BackupService:
             .with_for_update(skip_locked=True)
         ).all()
         for run in expired:
-            if run.attempt_count >= settings.backup_max_attempts:
+            if run.attempt_count >= max_attempts_effective(session):
                 self._finish_failed(
                     session,
                     run,
@@ -753,7 +767,7 @@ class BackupService:
             run.attempt_count += 1
             if run.started_at is None:
                 run.started_at = now
-            run.lease_expires_at = now + timedelta(minutes=settings.backup_run_lease_minutes)
+            run.lease_expires_at = now + timedelta(minutes=run_lease_minutes_effective(session))
             run.next_attempt_at = None
             session.add(run)
             session.commit()
@@ -1328,7 +1342,7 @@ class BackupService:
             run = session.get(BackupRun, run_id)
             if run is None:
                 return
-            delay = next_retry_delay_minutes(run.attempt_count, settings.backup_max_attempts)
+            delay = next_retry_delay_minutes(run.attempt_count, max_attempts_effective(session))
             if delay is None:
                 self._finish_failed(session, run, code=code, summary=summary)
             else:

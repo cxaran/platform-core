@@ -19,29 +19,41 @@ class Settings(BaseSettings):
     email_token_expire_minutes: int
     trys_before_lock: int
 
-    # Allowlist explícita de orígenes de navegador confiables (CSV) para mutaciones
-    # autenticadas por cookie. Dev: localhost. Producción: debe definirse por env.
-    trusted_browser_origins: str = "http://localhost:3000"
+    # Sesión del CLIENTE (usuario sin roles): larga, en días — un usuario final que
+    # entra una vez al mes no debe volver a iniciar sesión. El personal (con roles
+    # RBAC) conserva la sesión corta de access_token_expire_minutes. Ambas se
+    # extienden con la renovación deslizante mientras haya actividad; rotar
+    # User.token (contraseña/correo/forzar logout) las mata al instante.
+    customer_session_expire_days: int = 90
+
+    # Allowlist de orígenes de navegador confiables (CSV) para mutaciones
+    # autenticadas por cookie. OPCIONAL: el dominio de la instalación se captura en
+    # el asistente de bootstrap (token-gated) y se persiste en system_settings —
+    # el guard lo carga de la base en runtime. Esta variable queda como override
+    # ADITIVO de despliegue/emergencia (p. ej. recuperar una instalación con un
+    # dominio mal guardado). Sin definir: localhost en dev, vacío en producción.
+    trusted_browser_origins: str | None = None
 
     @computed_field
     @property
     def trusted_origins(self) -> frozenset[str]:
+        raw_csv = self.trusted_browser_origins
+        if raw_csv is None:
+            raw_csv = "" if self.environment == "production" else "http://localhost:3000"
         normalized: set[str] = set()
-        for raw in self.trusted_browser_origins.split(","):
+        for raw in raw_csv.split(","):
             origin = normalize_browser_origin(raw.strip())
             if origin is not None:
                 normalized.add(origin)
         return frozenset(normalized)
 
     @model_validator(mode="after")
-    def _require_trusted_origins_in_production(self) -> Self:
+    def _require_https_trusted_origins_in_production(self) -> Self:
+        # Producción ya no EXIGE la variable (el dominio vive en system_settings,
+        # declarado en el bootstrap); pero si se define, solo se aceptan orígenes
+        # HTTPS — un origen http confiable anularía la protección del guard.
         if self.environment == "production":
-            origins = self.trusted_origins
-            if not origins:
-                raise ValueError(
-                    "trusted_browser_origins debe definirse con orígenes HTTPS válidos en producción."
-                )
-            if any(not origin.startswith("https://") for origin in origins):
+            if any(not origin.startswith("https://") for origin in self.trusted_origins):
                 raise ValueError(
                     "trusted_browser_origins debe contener únicamente orígenes HTTPS en producción."
                 )
@@ -93,19 +105,9 @@ class Settings(BaseSettings):
     # hasta que un administrador le asigne uno) y SIN sesión automática.
     # (registration_enabled/password_reset_enabled se retiraron de Settings: la
     # política vive en system_settings —editable por administradores— y la migración
-    # de siembra importó el valor del entorno una única vez.)
-    # Gate de DESPLIEGUE del registro público: si es False, la política persistida en
-    # system_settings no puede activarse (candado de infraestructura que la UI no
-    # salta). Sin valor explícito: permitido sólo en entorno local. La política
-    # efectiva es (gate AND system_settings.public_registration_enabled).
-    registration_allowed: bool | None = None
-
-    @computed_field
-    @property
-    def registration_allowed_effective(self) -> bool:
-        if self.registration_allowed is not None:
-            return self.registration_allowed
-        return self.environment == "local"
+    # de siembra importó el valor del entorno una única vez. El antiguo gate
+    # REGISTRATION_ALLOWED del entorno se retiró: system_settings es la única
+    # fuente de verdad del registro público.)
 
     # Respaldos cifrados hacia Google Drive (una sola cuenta, scope drive.file). El
     # horario/retención EDITABLES viven en la tabla backup_settings (no aquí); estos
@@ -121,12 +123,10 @@ class Settings(BaseSettings):
     backup_temp_dir: str = "/tmp/platform-core-backups"
     backup_run_lease_minutes: int = 120
     backup_max_attempts: int = 3
-    # OAuth de la app de Google (web application). El client secret NUNCA se persiste
-    # en PostgreSQL ni se loguea; sólo vive en el .env del despliegue (la alternativa
-    # es capturarlo en la UI: se guarda cifrado en backup_settings).
-    google_drive_client_id: str | None = None
-    google_drive_client_secret: SecretStr | None = None
-    google_drive_redirect_uri: str | None = None
+    # (Las credenciales OAuth de Google Drive se retiraron del entorno: viven
+    # únicamente en backup_settings — client ID en claro, client secret cifrado
+    # write-only, capturados en la UI — y el redirect URI se deriva del dominio
+    # base verificado, igual que el login con Google en system_settings.)
 
     # Clave Fernet que cifra en reposo secretos guardados en la base (p. ej. el
     # refresh token de Google Drive). Legada: la CLAVE MAESTRA nueva es
@@ -139,6 +139,19 @@ class Settings(BaseSettings):
     # viejo (re-cifrado perezoso al reescribir). Generar:
     #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     app_encryption_key: SecretStr | None = None
+
+    # --- Agent Gateway (copiloto agéntico) ---
+    # Secreto HS256 con el que FastAPI firma el ticket de conexión efímero que el
+    # navegador presenta al Agent Gateway. El Gateway verifica con este mismo secreto
+    # (var GATEWAY_AGENT_TICKET_SECRET). Sin default: fail-closed.
+    agent_gateway_ticket_signing_secret: SecretStr = SecretStr("")
+    # TTL del ticket de conexión (segundos). Corto: solo debe durar el handshake.
+    agent_gateway_ticket_ttl_seconds: int = 120
+    # Secreto compartido server-to-server para el puente interno de arriendo de
+    # credencial (header X-Internal-Auth). None = puente deshabilitado (503).
+    agent_gateway_internal_secret: SecretStr | None = None
+    # TTL del secreto de proveedor arrendado por turn (segundos).
+    agent_gateway_lease_ttl_seconds: int = 300
 
     @model_validator(mode="after")
     def _require_encryption_key_in_production(self) -> Self:
@@ -177,15 +190,20 @@ class Settings(BaseSettings):
             )
         )
 
-    smtp_host: str
-    smtp_port: int
-    smtp_user: str
-    smtp_password: SecretStr
-    smtp_from_email: str
-    smtp_from_name: str
-    smtp_tls: bool
-    smtp_ssl: bool
-    smtp_use_credentials: bool
+    # Transporte de correo del modo "entorno" (el modo real se elige en la UI:
+    # entorno/SMTP/Resend, con secretos cifrados en system_settings). OPCIONALES
+    # con defaults vacíos: una instalación 100% automática arranca sin proveedor
+    # de correo y lo configura después desde la UI; en producción el modo
+    # "entorno" exige un SMTP real al usarse, no al importar.
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: SecretStr = SecretStr("")
+    smtp_from_email: str = ""
+    smtp_from_name: str = "Platform Core"
+    smtp_tls: bool = True
+    smtp_ssl: bool = False
+    smtp_use_credentials: bool = True
 
     bootstrap_admin_email: str | None = None
     bootstrap_admin_password: SecretStr | None = None
