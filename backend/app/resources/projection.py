@@ -242,12 +242,15 @@ def _filter_options(
 
 # Orden de presentación de los operadores filtrables visibles de un campo. ``gte`` y
 # ``lte`` (rango por extremos: campos de fecha/numéricos en ``filter_fields`` o con
-# ``range`` declarado) SÍ se publican; ``in`` e ``isnull`` quedan fuera de este alcance.
+# ``range`` declarado) SÍ se publican. ``in`` se publica como autofiltro por valores
+# (checklist estilo Excel, value_shape=multi); ``isnull`` sigue fuera (viaja como
+# ``null_count`` en la respuesta de facetas, no como operador visible).
 _FILTERABLE_OPERATOR_ORDER = (
     Operator.CONTAINS,
     Operator.STARTS_WITH,
     Operator.ENDS_WITH,
     Operator.EQ,
+    Operator.IN,
     Operator.NE,
     Operator.GTE,
     Operator.LTE,
@@ -255,6 +258,20 @@ _FILTERABLE_OPERATOR_ORDER = (
     Operator.BEFORE,
     Operator.AFTER,
     Operator.BETWEEN,
+)
+
+# Tipos que admiten autofiltro por valores únicos (facetas): universos discretos o
+# discretizables. Fechas/horas quedan fuera (su filtro natural es el calendario) y
+# decimal también (valores continuos: agrupar por igualdad exacta no es útil).
+_FACETABLE_VALUE_TYPES = frozenset(
+    {
+        FieldValueType.STRING,
+        FieldValueType.EMAIL,
+        FieldValueType.UUID,
+        FieldValueType.BOOLEAN,
+        FieldValueType.ENUM,
+        FieldValueType.INTEGER,
+    }
 )
 
 _TEXT_MATCH_LABELS = {
@@ -350,6 +367,22 @@ def _eq_filter_declaration(
     return _filter_options(field_name, widget, declaration.get("options")), widget
 
 
+def _in_filter_options(
+    field_name: str, field_info: FieldInfo, eq_options: Optional[list[ResourceFilterOption]]
+) -> Optional[list[ResourceFilterOption]]:
+    """Opciones cerradas del autofiltro ``in`` de un campo.
+
+    Prioridad: la declaración de filtro existente (``ui.filter.options``, con labels
+    en español); sin ella, un enum deriva sus miembros (misma regla que formularios).
+    Universos abiertos (texto/uuid/entero) → ``None``: el cliente los obtiene con
+    conteos del endpoint de facetas."""
+    if eq_options:
+        return list(eq_options)
+    if _value_type(field_info.annotation) is FieldValueType.ENUM:
+        return _form_field_options(field_name, field_info, FieldValueType.ENUM)
+    return None
+
+
 def _filterable_operator(
     operator: Operator,
     *,
@@ -359,8 +392,24 @@ def _filterable_operator(
     eq_options: Optional[list[ResourceFilterOption]],
     eq_widget: Optional[WidgetType],
     calendar_tz: str,
+    in_options: Optional[list[ResourceFilterOption]] = None,
+    max_in_values: Optional[int] = None,
 ) -> FilterableOperatorCapability:
     key = FilterOperator(operator.value)
+    if operator is Operator.IN:
+        # Autofiltro por valores: N valores en un parámetro repetido. Las opciones
+        # cerradas (enum/select declarado) viajan aquí; para universos abiertos el
+        # cliente las obtiene con conteos del endpoint de facetas de la lista.
+        return FilterableOperatorCapability(
+            key=key,
+            label="Cualquiera de",
+            value_shape=FilterValueShape.MULTI,
+            widget=WidgetType.MULTISELECT,
+            parameter_name=parameter,
+            multiple=True,
+            options=in_options,
+            max_values=max_in_values,
+        )
     if operator in _TEXT_MATCH_LABELS:
         return FilterableOperatorCapability(
             key=key,
@@ -441,6 +490,11 @@ def _filterable_fields(
         for parameter in plan.filter_parameters
         if parameter.operator is Operator.EQ
     }
+    in_params = {
+        parameter.field_name: parameter.parameter_name
+        for parameter in plan.filter_parameters
+        if parameter.operator is Operator.IN
+    }
     ext_single = {
         (descriptor.field_name, descriptor.operator): descriptor.parameter_name
         for descriptor in plan.extended_filters
@@ -486,6 +540,8 @@ def _filterable_fields(
                 parameter = parameter_name_for(name, operator) if name in range_field_names else None
             elif operator is Operator.EQ:
                 parameter = eq_params.get(name)
+            elif operator is Operator.IN:
+                parameter = in_params.get(name)
             else:
                 parameter = ext_single.get((name, operator))
             if parameter is None:
@@ -500,6 +556,8 @@ def _filterable_fields(
                     eq_options=eq_options,
                     eq_widget=eq_widget,
                     calendar_tz=calendar_tz,
+                    in_options=_in_filter_options(name, field_info, eq_options),
+                    max_in_values=plan.max_in_values,
                 )
             )
 
@@ -512,6 +570,10 @@ def _filterable_fields(
                 description=field_cap.description,
                 value_type=field_cap.type,
                 operators=operators,
+                facetable=(
+                    (name in plan.filter_columns or name in plan.in_fields)
+                    and field_cap.type in _FACETABLE_VALUE_TYPES
+                ),
             )
         )
     return result
@@ -531,6 +593,23 @@ def _list_capability_cached(definition: ResourceDefinition) -> ResourceListCapab
         cached = _list_capability(definition)
         _LIST_CAPABILITY_CACHE[definition.name] = cached
     return cached
+
+
+def facetable_field_names(definition: ResourceDefinition) -> frozenset[str]:
+    """Campos con autofiltro por valores (fuente única: la capability proyectada).
+    Los endpoints de facetas la usan como allowlist — nunca derivan la suya."""
+    if definition.list_query is None or definition.list_schema is None:
+        return frozenset()
+    capability = _list_capability_cached(definition)
+    return frozenset(field.key for field in capability.filterable_fields if field.facetable)
+
+
+def aggregable_field_names(definition: ResourceDefinition) -> frozenset[str]:
+    """Campos numéricos con agregados (fuente única: la capability proyectada)."""
+    if definition.list_query is None or definition.list_schema is None:
+        return frozenset()
+    capability = _list_capability_cached(definition)
+    return frozenset(field.name for field in capability.fields if field.aggregable)
 
 
 def _form_fields_cached(write_schema: type[BaseModel]) -> list[ResourceFormFieldCapability]:
@@ -567,15 +646,21 @@ def _list_capability(definition: ResourceDefinition) -> ResourceListCapability:
         # explícito (``ui.filter``), o si es un campo de filtro del plan con label (scoping).
         if not (visible_in_list or has_filter or is_filter_field):
             continue
+        value_type = _value_type(field_info.annotation)
         cap = ResourceFieldCapability(
             name=name,
             label=_require_label(field_info, name),
             description=field_info.description,
-            type=_value_type(field_info.annotation),
+            type=value_type,
             visible_in_list=visible_in_list,
             sortable=name in plan.public_sort_columns,
             searchable=name in searchable,
             filter_operators=_filter_operators(plan, name),
+            # Numérico consultable → el pie de totales puede pedir sus agregados.
+            aggregable=(
+                value_type in (FieldValueType.INTEGER, FieldValueType.DECIMAL)
+                and name in plan.all_columns
+            ),
         )
         fields.append(cap)
         field_caps[name] = cap
@@ -599,12 +684,18 @@ def _list_capability(definition: ResourceDefinition) -> ResourceListCapability:
         search = SearchCapability(enabled=False)
 
     sort = _sort_capability(plan, _constraint(query_schema.model_fields["sort"], "max_length"))
+    has_facets = any(field.facetable for field in filterable_fields)
+    has_stats = any(field.aggregable for field in fields)
     return ResourceListCapability(
         fields=fields,
         filterable_fields=filterable_fields,
         pagination=pagination,
         search=search,
         sort=sort,
+        facets_url=(
+            f"/api/v1/resources/{definition.name}/facets" if has_facets else None
+        ),
+        stats_url=f"/api/v1/resources/{definition.name}/stats" if has_stats else None,
     )
 
 

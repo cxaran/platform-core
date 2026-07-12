@@ -114,8 +114,10 @@ class FilterableFieldsTest(unittest.TestCase):
         name = fields["name"]
         self.assertEqual(name["value_type"], "string")
         ops = self._by_key(name)
+        # ``in`` (autofiltro por valores) se publica junto a eq desde que name está
+        # en los in_fields del recurso.
         self.assertEqual(
-            list(ops.keys()), ["contains", "starts_with", "ends_with", "eq", "ne"]
+            list(ops.keys()), ["contains", "starts_with", "ends_with", "eq", "in", "ne"]
         )
         self.assertEqual(ops["contains"]["parameter_name"], "name_contains")
         self.assertEqual(ops["contains"]["widget"], "text")
@@ -125,11 +127,16 @@ class FilterableFieldsTest(unittest.TestCase):
         self.assertTrue(ops["eq"]["case_sensitive"])
         self.assertEqual(ops["ne"]["parameter_name"], "name_ne")
         self.assertTrue(ops["ne"]["case_sensitive"])
+        self.assertEqual(ops["in"]["parameter_name"], "name_in")
+        self.assertEqual(ops["in"]["value_shape"], "multi")
+        self.assertEqual(ops["in"]["widget"], "multiselect")
+        self.assertTrue(ops["in"]["multiple"])
+        self.assertTrue(name["facetable"])
 
     def test_is_active_publishes_equals_with_select_options(self) -> None:
         fields = self._fields_by_key(self._list("users", "users:read"))
         ops = self._by_key(fields["is_active"])
-        self.assertEqual(list(ops.keys()), ["eq"])
+        self.assertEqual(list(ops.keys()), ["eq", "in"])
         eq = ops["eq"]
         self.assertEqual(eq["widget"], "select")
         self.assertEqual(eq["parameter_name"], "is_active")
@@ -140,6 +147,9 @@ class FilterableFieldsTest(unittest.TestCase):
                 {"value": "false", "label": "Inactivos"},
             ],
         )
+        # El autofiltro hereda las MISMAS opciones declaradas del select de eq.
+        self.assertEqual(ops["in"]["parameter_name"], "is_active_in")
+        self.assertEqual(ops["in"]["options"], eq["options"])
 
     def test_created_at_publishes_calendar_operators_with_timezone(self) -> None:
         fields = self._fields_by_key(self._list("users", "users:read"))

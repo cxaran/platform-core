@@ -49,14 +49,39 @@ def apply_query_schema(
 ) -> Select[Any]:
     # Plan explícito si se proporciona; si no, fallback completo a __query_*__.
     resolved = plan if plan is not None else CompiledQueryPlan.from_schema(type(query))
-    filter_columns = resolved.filter_columns
-    all_columns = resolved.all_columns
-    range_fields = resolved.range_fields
-    in_fields = resolved.in_fields
-    null_filter_fields = resolved.null_filter_fields
-    search_columns = resolved.search_columns
+    stmt = apply_filter_predicates(stmt=stmt, query=query, plan=resolved)
+
+    if not query.sort:
+        _fail("invalid_sort", "El parámetro sort no puede estar vacío.", field_name="sort")
+    stmt = _apply_sort(stmt, query.sort, resolved)
+
+    return stmt
+
+
+def apply_filter_predicates(
+    *,
+    stmt: Select[Any],
+    query: OffsetQuerySchema,
+    plan: CompiledQueryPlan,
+    exclude_field: str | None = None,
+) -> Select[Any]:
+    """Aplica SOLO los predicados de filtro del query (igualdad, rango, in, isnull,
+    extendidos de C1 y búsqueda ``q``) sin tocar el orden.
+
+    ``exclude_field`` omite TODOS los predicados del campo indicado: es la semántica
+    del autofiltro estilo Excel — los valores disponibles de una columna se calculan
+    bajo los filtros de las DEMÁS columnas (y la búsqueda global), nunca del propio.
+    """
+    filter_columns = plan.filter_columns
+    all_columns = plan.all_columns
+    range_fields = plan.range_fields
+    in_fields = plan.in_fields
+    null_filter_fields = plan.null_filter_fields
+    search_columns = plan.search_columns
 
     for field_name, column in filter_columns.items():
+        if field_name == exclude_field:
+            continue
         value = getattr(query, field_name)
         if value is not None:
             stmt = _apply_equality_filter(stmt, column, value)
@@ -71,26 +96,26 @@ def apply_query_schema(
                 stmt = stmt.where(column <= lte_value)
 
     for field_name in in_fields:
+        if field_name == exclude_field:
+            continue
         in_values = getattr(query, f"{field_name}_in")
         if in_values:
             stmt = stmt.where(all_columns[field_name].in_(in_values))
 
     for field_name in null_filter_fields:
+        if field_name == exclude_field:
+            continue
         isnull = getattr(query, f"{field_name}_isnull")
         if isnull is not None:
             column = all_columns[field_name]
             stmt = stmt.where(column.is_(None) if isnull else column.isnot(None))
 
-    if resolved.extended_filters:
-        stmt = _apply_extended_filters(stmt, query, resolved)
+    if plan.extended_filters:
+        stmt = _apply_extended_filters(stmt, query, plan, exclude_field=exclude_field)
 
     q = getattr(query, "q", None)
     if q is not None and search_columns:
-        stmt = stmt.where(resolved.search_strategy.predicate(search_columns, q))
-
-    if not query.sort:
-        _fail("invalid_sort", "El parámetro sort no puede estar vacío.", field_name="sort")
-    stmt = _apply_sort(stmt, query.sort, resolved)
+        stmt = stmt.where(plan.search_strategy.predicate(search_columns, q))
 
     return stmt
 
@@ -109,6 +134,8 @@ def _apply_extended_filters(
     stmt: Select[Any],
     query: OffsetQuerySchema,
     plan: CompiledQueryPlan,
+    *,
+    exclude_field: str | None = None,
 ) -> Select[Any]:
     """Aplica los operadores extendidos de C1 (texto y fecha de calendario).
 
@@ -118,6 +145,8 @@ def _apply_extended_filters(
     """
     tz = _resolve_calendar_tz(plan.calendar_timezone)
     for descriptor in plan.extended_filters:
+        if descriptor.field_name == exclude_field:
+            continue
         column = descriptor.column
         operator = descriptor.operator
         if operator is Operator.NE:

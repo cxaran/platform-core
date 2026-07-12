@@ -73,9 +73,10 @@ class FilterValueShape(str, Enum):
     SINGLE = "single"
     # Rango con dos extremos declarados en ``parameters`` (p. ej. ``between``).
     RANGE = "range"
-    # Nota: "multiple" y "none" se retiraron — los operadores in/isnull están
-    # excluidos a propósito del contrato filtrable visible, así que esas formas
-    # eran inalcanzables y obligaban al frontend a narrowing de casos imposibles.
+    # Lista de valores en un parámetro repetido (``in``: autofiltro por valores). Se
+    # reintrodujo JUNTO con su superficie de UI (checklist estilo Excel); "none" sigue
+    # fuera: isnull no se proyecta como operador visible (viaja en ``null_count``).
+    MULTI = "multi"
 
 
 class HttpMethod(str, Enum):
@@ -118,6 +119,9 @@ class ResourceFieldCapability(ApiReadSchema):
     # Capacidad técnica de lectura (qué operadores admite el campo en el plan). Los
     # controles de filtro *visibles* se declaran en ``ResourceListCapability.filters``.
     filter_operators: list[FilterOperator]
+    # El campo numérico admite agregados (suma/promedio/mín/máx) vía ``stats_url``
+    # de la lista: es el pie de totales de la tabla, calculado por el backend.
+    aggregable: bool = False
 
 
 class ResourceFilterOption(ApiReadSchema):
@@ -168,6 +172,9 @@ class FilterableFieldCapability(ApiReadSchema):
     description: Optional[str] = None
     value_type: FieldValueType
     operators: list[FilterableOperatorCapability]
+    # El campo admite autofiltro por valores únicos (checklist estilo Excel) vía
+    # ``facets_url`` de la lista. Requiere que el campo consuma ``eq`` o ``in``.
+    facetable: bool = False
 
 
 class PaginationCapability(ApiReadSchema):
@@ -198,6 +205,12 @@ class ResourceListCapability(ApiReadSchema):
     pagination: PaginationCapability
     search: SearchCapability
     sort: SortCapability
+    # Autofiltro por valores: endpoint de facetas del recurso (``?field=<campo>`` +
+    # los parámetros de filtro activos). Presente solo si hay campos ``facetable``.
+    facets_url: Optional[str] = None
+    # Agregados del pie de tabla (``?fields=a,b`` + filtros activos). Presente solo
+    # si hay campos ``aggregable``.
+    stats_url: Optional[str] = None
 
 
 class ResourceFormFieldCapability(ApiReadSchema):

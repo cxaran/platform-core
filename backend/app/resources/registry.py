@@ -81,7 +81,9 @@ USERS = ResourceQuery(
         filter_fields=("is_active", "email", "name"),
         sort_fields=("created_at", "name", "email"),
         search_fields=("name", "email"),
-        in_fields=("id",),
+        # ``id`` para selección relacional; el resto habilita el autofiltro por
+        # valores (checklist estilo Excel) de las columnas visibles.
+        in_fields=("id", "name", "email", "is_active"),
         field_operators={
             "name": _TEXT_FILTER_OPERATORS,
             "email": _TEXT_FILTER_OPERATORS,
@@ -112,7 +114,7 @@ ROLES = ResourceQuery(
         filter_fields=("is_active", "name"),
         sort_fields=("created_at", "name"),
         search_fields=("name",),
-        in_fields=("id",),
+        in_fields=("id", "name", "is_active"),
         field_operators={
             "name": _TEXT_FILTER_OPERATORS,
             "created_at": _CREATED_AT_OPERATORS,
@@ -144,7 +146,7 @@ BACKUP_RUNS = ResourceQuery(
         filter_fields=("status", "trigger_kind"),
         field_operators={"created_at": _CREATED_AT_OPERATORS},
         sort_fields=("created_at", "finished_at", "file_size_bytes"),
-        in_fields=("id",),
+        in_fields=("id", "status", "trigger_kind"),
         default_sort="-created_at",
     ),
 )
@@ -174,7 +176,7 @@ AUDIT_EVENTS = ResourceQuery(
         filter_fields=("actor_user_id", "action", "entity_type", "entity_id"),
         field_operators={"occurred_at": _CREATED_AT_OPERATORS},
         sort_fields=("occurred_at",),
-        in_fields=("id",),
+        in_fields=("id", "action", "entity_type", "actor_user_id"),
         default_sort="-occurred_at",
     ),
 )

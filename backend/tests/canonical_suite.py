@@ -44,6 +44,7 @@ BACKEND_CANONICAL_TEST_MODULES = (
     "backend.tests.test_runtime_policy_settings",
     "backend.tests.test_branding",
     "backend.tests.test_maintenance",
+    "backend.tests.test_resource_facets",
 )
 
 
