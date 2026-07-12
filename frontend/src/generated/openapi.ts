@@ -35,6 +35,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/agent/connection-ticket": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Connection Ticket
+         * @description Emite un ticket corto y firmado para conectar al Agent Gateway.
+         *
+         *     Requiere sesión válida (cualquier usuario autenticado puede solicitarlo). FastAPI
+         *     es la autoridad de datos y NO almacena credenciales del proveedor de IA: este
+         *     ticket es el único puente FastAPI<->Gateway y solo prueba que un usuario con sesión
+         *     vigente autorizó abrir la conexión (queda atado a su versión de sesión actual).
+         *
+         *     TODO: en una rebanada posterior esto podría gatearse por un permiso 'agent:use'.
+         */
+        post: operations["create_connection_ticket_api_v1_agent_connection_ticket_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/agent/credential-lease": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Lease Credential */
+        post: operations["lease_credential_api_v1_internal_agent_credential_lease_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/me/ai-providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Credentials */
+        get: operations["list_credentials_api_v1_users_me_ai_providers_get"];
+        put?: never;
+        /** Create Credential */
+        post: operations["create_credential_api_v1_users_me_ai_providers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/me/ai-providers/{credential_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Credential */
+        delete: operations["delete_credential_api_v1_users_me_ai_providers__credential_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Credential */
+        patch: operations["update_credential_api_v1_users_me_ai_providers__credential_id__patch"];
+        trace?: never;
+    };
     "/api/v1/audit-events": {
         parameters: {
             query?: never;
@@ -571,6 +651,202 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/public/branding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Public Branding */
+        get: operations["read_public_branding_api_v1_public_branding_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/branding/logo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Public Logo
+         * @description El logo original (raster verificado). HEAD permite al frontend comprobar
+         *     el content-type antes de referenciarlo como favicon.
+         */
+        get: operations["read_public_logo_api_v1_public_branding_logo_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        /**
+         * Read Public Logo
+         * @description El logo original (raster verificado). HEAD permite al frontend comprobar
+         *     el content-type antes de referenciarlo como favicon.
+         */
+        head: operations["read_public_logo_api_v1_public_branding_logo_head"];
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/branding/pwa-icon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Pwa Icon
+         * @description Ícono CUADRADO de la PWA derivado del logo, generado al vuelo.
+         *
+         *     Centra el logo (sin deformar) en un lienzo cuadrado con márgenes
+         *     transparentes (o el color ``bg``) y lo escala a ``size``. ``padding`` reserva
+         *     la zona segura del ícono adaptable de Android (maskable). 404 si no hay logo
+         *     o no es una imagen legible → el manifest cae al ícono placeholder.
+         */
+        get: operations["read_pwa_icon_api_v1_public_branding_pwa_icon_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** My Notifications */
+        get: operations["my_notifications_api_v1_notifications_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/me/read-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Read All My Notifications */
+        post: operations["read_all_my_notifications_api_v1_notifications_me_read_all_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/{notification_id}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Read Notification */
+        post: operations["read_notification_api_v1_notifications__notification_id__read_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/push/public-key": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Push Public Key
+         * @description Genera las credenciales VAPID en el primer uso y entrega la pública.
+         */
+        get: operations["push_public_key_api_v1_notifications_push_public_key_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/push/subscription": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save Push Subscription
+         * @description Alta/refresco de la suscripción de ESTE navegador (upsert por endpoint).
+         */
+        put: operations["save_push_subscription_api_v1_notifications_push_subscription_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/push/unsubscribe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remove Push Subscription
+         * @description Baja de la suscripción PROPIA (la de otro usuario 'no existe').
+         */
+        post: operations["remove_push_subscription_api_v1_notifications_push_unsubscribe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/broadcast": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send Broadcast */
+        post: operations["send_broadcast_api_v1_notifications_broadcast_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/permissions": {
         parameters: {
             query?: never;
@@ -595,7 +871,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Resources */
+        /**
+         * List Resources
+         * @description Catálogo de navegación completo, proyectado por permisos.
+         *
+         *     ``resources`` son los recursos tabulares/catálogo visibles (contrato CRUD
+         *     genérico); ``navigation_modules`` son los módulos ESPECIALIZADOS (pantallas
+         *     propias como el editor del sitio o el POS) donde el usuario tiene ALGUNO de
+         *     los permisos declarados (*anyOf*).
+         */
         get: operations["list_resources_api_v1_resources_get"];
         put?: never;
         post?: never;
@@ -826,6 +1110,33 @@ export interface paths {
         patch: operations["update_system_settings_api_v1_system_settings__item_id__patch"];
         trace?: never;
     };
+    "/api/v1/system-settings/{item_id}/logo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Upload Brand Logo
+         * @description Sube (o reemplaza) el logo de la instalación para el manifest de la PWA.
+         *
+         *     El contenido se VERIFICA con Pillow antes de guardar: solo PNG/JPEG/WEBP
+         *     reales. La auditoría registra el cambio sin el binario.
+         */
+        put: operations["upload_brand_logo_api_v1_system_settings__item_id__logo_put"];
+        post?: never;
+        /**
+         * Delete Brand Logo
+         * @description Quita el logo: el manifest vuelve a los íconos placeholder.
+         */
+        delete: operations["delete_brand_logo_api_v1_system_settings__item_id__logo_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users/me": {
         parameters: {
             query?: never;
@@ -1026,6 +1337,88 @@ export interface components {
          * @enum {string}
          */
         ActionSuccessBehavior: "refresh";
+        /**
+         * AiCredentialType
+         * @description Tipo de credencial de proveedor de IA almacenada por el usuario.
+         *
+         *     ``api_key`` guarda un secreto estático (API key). ``oauth`` queda reservado para
+         *     un flujo OAuth cifrado (p. ej. ChatGPT Plus/Codex); en esta versión solo se
+         *     implementa ``api_key``. Enum NO nativo (VARCHAR + CHECK).
+         * @enum {string}
+         */
+        AiCredentialType: "api_key" | "oauth";
+        /**
+         * AiProvider
+         * @description Proveedor de IA de una credencial registrada por el usuario.
+         *
+         *     El valor enruta al adaptador correspondiente en el Agent Gateway. Enum NO nativo
+         *     (VARCHAR + CHECK); el valor más largo es ``openrouter`` (10).
+         * @enum {string}
+         */
+        AiProvider: "openai" | "anthropic" | "gemini" | "openrouter" | "ollama";
+        /**
+         * AiProviderCredentialCreate
+         * @description Alta de una credencial de proveedor de IA del usuario autenticado.
+         *
+         *     ``secret`` es el secreto EN CLARO (entrada): se cifra antes de guardar y nunca
+         *     se devuelve. La auditoría y el soft-delete los gobierna el servidor.
+         */
+        AiProviderCredentialCreate: {
+            /** Proveedor */
+            provider: components["schemas"]["AiProvider"];
+            /** Etiqueta */
+            label: string;
+            /**
+             * Secreto
+             * @description Secreto del proveedor (solo entrada).
+             */
+            secret: string;
+            /** Modelo por defecto */
+            default_model?: string | null;
+        };
+        /**
+         * AiProviderCredentialRead
+         * @description Representación pública de una credencial. NUNCA expone el secreto en claro.
+         */
+        AiProviderCredentialRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            provider: components["schemas"]["AiProvider"];
+            credential_type: components["schemas"]["AiCredentialType"];
+            /** Label */
+            label: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Default Model */
+            default_model?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /**
+         * AiProviderCredentialUpdate
+         * @description Actualización parcial de una credencial (owner-only).
+         *
+         *     Solo se aplican los campos enviados. ``secret`` (si viene) reemplaza y recifra
+         *     el secreto; nunca se devuelve. ``provider`` es inmutable (no se declara).
+         */
+        AiProviderCredentialUpdate: {
+            /** Label */
+            label?: string | null;
+            /** Secret */
+            secret?: string | null;
+            /** Default Model */
+            default_model?: string | null;
+            /** Is Active */
+            is_active?: boolean | null;
+        };
         /**
          * AuditEventListItem
          * @description Versión de listado compatible con ``ResourceQuery``.
@@ -1291,6 +1684,10 @@ export interface components {
             retention_monthly_count: number;
             /** Retention Yearly Count */
             retention_yearly_count: number;
+            /** Run Lease Minutes */
+            run_lease_minutes?: number | null;
+            /** Max Attempts */
+            max_attempts?: number | null;
             /** Age Recipient */
             age_recipient?: string | null;
             /** Age Recipient Fingerprint */
@@ -1359,6 +1756,16 @@ export interface components {
             /** Copias anuales */
             retention_yearly_count?: number | null;
             /**
+             * Lease de ejecución (minutos)
+             * @description Tiempo antes de considerar huérfana una ejecución en curso y recuperarla. Vacío = default del despliegue.
+             */
+            run_lease_minutes?: number | null;
+            /**
+             * Intentos máximos
+             * @description Reintentos de una ejecución antes de marcarla fallida. Vacío = default del despliegue.
+             */
+            max_attempts?: number | null;
+            /**
              * Artefacto de exploración
              * @description Genera el SQLite legible junto a cada respaldo (mismo snapshot).
              */
@@ -1385,6 +1792,11 @@ export interface components {
          * @enum {string}
          */
         BackupTriggerKind: "scheduled" | "manual";
+        /** Body_upload_brand_logo_api_v1_system_settings__item_id__logo_put */
+        Body_upload_brand_logo_api_v1_system_settings__item_id__logo_put: {
+            /** File */
+            file: string;
+        };
         /** BootstrapAdditionalRole */
         BootstrapAdditionalRole: {
             /** Name */
@@ -1439,6 +1851,11 @@ export interface components {
             /** Additional Roles */
             additional_roles?: components["schemas"]["BootstrapAdditionalRole"][];
             /**
+             * App Base Url
+             * @description Dominio público (origen) de la instalación, p. ej. https://mi-dominio.com. Se persiste en la configuración del sistema y habilita las mutaciones autenticadas por cookie desde ese origen (guard CSRF). El asistente lo propone desde la URL actual; verifícalo antes de enviar.
+             */
+            app_base_url?: string | null;
+            /**
              * Public Registration Enabled
              * @description Permitir el auto-registro público desde el primer momento.
              * @default false
@@ -1455,6 +1872,16 @@ export interface components {
              * @description Nombre de la institución (opcional).
              */
             institution_name?: string | null;
+            /**
+             * Customer Session Days
+             * @description Días de sesión del cliente (sin roles). Vacío = default del despliegue. Editable después en Configuración del sistema.
+             */
+            customer_session_days?: number | null;
+            /**
+             * Staff Session Minutes
+             * @description Minutos de sesión del personal (con roles). Vacío = default del despliegue. Editable después en Configuración del sistema.
+             */
+            staff_session_minutes?: number | null;
         };
         /** BootstrapLimitsRead */
         BootstrapLimitsRead: {
@@ -1499,6 +1926,21 @@ export interface components {
              */
             description: string | null;
         };
+        /** BroadcastRequest */
+        BroadcastRequest: {
+            /** Title */
+            title: string;
+            /** Body */
+            body: string;
+            /**
+             * Audience
+             * @default all
+             * @enum {string}
+             */
+            audience: "all" | "customers" | "staff";
+            /** Link Url */
+            link_url?: string | null;
+        };
         /**
          * ConnectDriveResponse
          * @description Respuesta de la acción conectar Drive: URL de autorización de Google.
@@ -1506,6 +1948,60 @@ export interface components {
         ConnectDriveResponse: {
             /** Authorization Url */
             authorization_url: string;
+        };
+        /**
+         * ConnectionTicketRead
+         * @description Ticket de conexión al Agent Gateway emitido a un usuario con sesión válida.
+         *
+         *     ``ticket`` es un JWT HS256 corto y firmado; ``expires_at`` es su vencimiento
+         *     (UTC). No incluye datos del negocio, permisos ni secretos.
+         */
+        ConnectionTicketRead: {
+            /** Ticket */
+            ticket: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+        };
+        /**
+         * CredentialLeaseRequest
+         * @description Solicitud server-to-server de arriendo de credencial (endpoint interno).
+         */
+        CredentialLeaseRequest: {
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            provider: components["schemas"]["AiProvider"];
+            credential_type?: components["schemas"]["AiCredentialType"] | null;
+        };
+        /**
+         * CredentialLeaseResponse
+         * @description Arriendo de credencial: el ``secret`` es la API key DESCIFRADA, de vida corta.
+         *
+         *     Solo lo consume el Agent Gateway por el puente interno; nunca el navegador. El
+         *     secreto nunca se loguea.
+         */
+        CredentialLeaseResponse: {
+            /**
+             * Lease Id
+             * Format: uuid
+             */
+            lease_id: string;
+            /** Secret */
+            secret: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Default Model */
+            default_model?: string | null;
+            /** Account Id */
+            account_id?: string | null;
         };
         /**
          * DriveBackupFileRead
@@ -1700,6 +2196,58 @@ export interface components {
             /** Message */
             message: string;
         };
+        /** MyNotifications */
+        MyNotifications: {
+            /** Unread Count */
+            unread_count: number;
+            /** Items */
+            items?: components["schemas"]["NotificationRead"][];
+        };
+        /**
+         * NavigationModule
+         * @description Módulo ESPECIALIZADO navegable (pantalla propia, no tabla genérica).
+         *
+         *     Contrato mínimo de navegación: el frontend solo enlaza (``href``) según la
+         *     sección (``admin`` o ``panel``); no describe columnas ni formularios — esos
+         *     viven en la pantalla especializada. ``required_permissions`` es un *anyOf*:
+         *     el módulo se proyecta si el usuario tiene ALGUNO de esos permisos (y el
+         *     backend de cada pantalla revalida siempre los suyos).
+         */
+        NavigationModule: {
+            /** Name */
+            name: string;
+            /** Label */
+            label: string;
+            /** Href */
+            href: string;
+            /**
+             * Section
+             * @enum {string}
+             */
+            section: "admin" | "panel";
+            /** Required Permissions */
+            required_permissions: string[];
+        };
+        /** NotificationRead */
+        NotificationRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Title */
+            title: string;
+            /** Body */
+            body: string;
+            /** Href */
+            href?: string | null;
+            /** Read At */
+            read_at?: string | null;
+            /** Created At */
+            created_at: string;
+        };
         /** OffsetPage[AuditEventListItem] */
         OffsetPage_AuditEventListItem_: {
             /** Items */
@@ -1788,6 +2336,60 @@ export interface components {
             label: string;
             /** Description */
             description?: string | null;
+        };
+        /**
+         * PublicBranding
+         * @description Marca pública: lo mínimo para el manifest y los encabezados.
+         */
+        PublicBranding: {
+            /** Name */
+            name: string;
+            /** Has Logo */
+            has_logo: boolean;
+            /** Logo Version */
+            logo_version?: string | null;
+        };
+        /**
+         * PushPublicKeyRead
+         * @description Clave pública VAPID del despliegue (``applicationServerKey``).
+         */
+        PushPublicKeyRead: {
+            /** Public Key */
+            public_key: string;
+        };
+        /**
+         * PushSubscribeRequest
+         * @description Suscripción tal como la entrega ``PushSubscription.toJSON()``.
+         */
+        PushSubscribeRequest: {
+            /** Endpoint */
+            endpoint: string;
+            keys: components["schemas"]["PushSubscriptionKeys"];
+        };
+        /** PushSubscribeResult */
+        PushSubscribeResult: {
+            /** Saved */
+            saved: boolean;
+        };
+        /**
+         * PushSubscriptionKeys
+         * @description Claves de cifrado que genera el navegador (RFC 8291).
+         */
+        PushSubscriptionKeys: {
+            /** P256Dh */
+            p256dh: string;
+            /** Auth */
+            auth: string;
+        };
+        /** PushUnsubscribeRequest */
+        PushUnsubscribeRequest: {
+            /** Endpoint */
+            endpoint: string;
+        };
+        /** PushUnsubscribeResult */
+        PushUnsubscribeResult: {
+            /** Removed */
+            removed: boolean;
         };
         /** ReadinessRead */
         ReadinessRead: {
@@ -1915,6 +2517,25 @@ export interface components {
              * @default []
              */
             related_lists: components["schemas"]["ResourceRelatedListCapability"][];
+        };
+        /**
+         * ResourceCatalogResponse
+         * @description Respuesta de ``GET /api/v1/resources``: catálogo completo de navegación.
+         *
+         *     - ``resources``: capabilities de los recursos tabulares/catálogo visibles para
+         *       el usuario (mismo contenido que antes del envelope).
+         *     - ``navigation_modules``: módulos ESPECIALIZADOS (pantallas propias como el
+         *       editor del sitio o el POS) proyectados por permisos — solo aparecen los
+         *       módulos donde el usuario tiene ALGUNO de sus ``required_permissions``.
+         */
+        ResourceCatalogResponse: {
+            /** Resources */
+            resources: components["schemas"]["ResourceCapability"][];
+            /**
+             * Navigation Modules
+             * @default []
+             */
+            navigation_modules: components["schemas"]["NavigationModule"][];
         };
         /**
          * ResourceDetailCapability
@@ -2307,8 +2928,6 @@ export interface components {
             id: string;
             /** Public Registration Enabled */
             public_registration_enabled: boolean;
-            /** Registration Allowed By Deployment */
-            registration_allowed_by_deployment: boolean;
             /** Public Registration Effective */
             public_registration_effective: boolean;
             /** App Base Url */
@@ -2317,6 +2936,10 @@ export interface components {
             app_base_url_verified_at?: string | null;
             /** Institution Name */
             institution_name?: string | null;
+            /** Brand Logo Configured */
+            brand_logo_configured: boolean;
+            /** Brand Logo Updated At */
+            brand_logo_updated_at?: string | null;
             /** Login Verification Mode */
             login_verification_mode: string;
             /** Google Login Enabled */
@@ -2327,6 +2950,34 @@ export interface components {
             google_auth_client_secret_configured: boolean;
             /** Password Reset Enabled */
             password_reset_enabled: boolean;
+            /** Customer Session Days */
+            customer_session_days?: number | null;
+            /** Staff Session Minutes */
+            staff_session_minutes?: number | null;
+            /** Customer Session Days Effective */
+            customer_session_days_effective: number;
+            /** Staff Session Minutes Effective */
+            staff_session_minutes_effective: number;
+            /** Login Attempts Before Lock */
+            login_attempts_before_lock?: number | null;
+            /** Email Token Minutes */
+            email_token_minutes?: number | null;
+            /** Application Timezone */
+            application_timezone?: string | null;
+            /** Agent Ticket Ttl Seconds */
+            agent_ticket_ttl_seconds?: number | null;
+            /** Agent Lease Ttl Seconds */
+            agent_lease_ttl_seconds?: number | null;
+            /** Login Attempts Before Lock Effective */
+            login_attempts_before_lock_effective: number;
+            /** Email Token Minutes Effective */
+            email_token_minutes_effective: number;
+            /** Application Timezone Effective */
+            application_timezone_effective: string;
+            /** Agent Ticket Ttl Seconds Effective */
+            agent_ticket_ttl_seconds_effective: number;
+            /** Agent Lease Ttl Seconds Effective */
+            agent_lease_ttl_seconds_effective: number;
             /** Email Mode */
             email_mode: string;
             /** Email From Address */
@@ -2355,6 +3006,14 @@ export interface components {
             email_last_test_error?: string | null;
             /** Email Transport Reason */
             email_transport_reason?: string | null;
+            /** Analytics Enabled */
+            analytics_enabled: boolean;
+            /** Analytics Ga4 Measurement Id */
+            analytics_ga4_measurement_id?: string | null;
+            /** Analytics Require Consent */
+            analytics_require_consent: boolean;
+            /** Analytics Debug Mode */
+            analytics_debug_mode: boolean;
             /** Environment */
             environment: string;
             /**
@@ -2388,10 +3047,45 @@ export interface components {
              */
             login_verification_mode?: ("disabled" | "code" | "link") | null;
             /**
+             * Sesión del cliente (días)
+             * @description Cuánto dura la sesión de un CLIENTE (usuario sin roles). La renovación deslizante la extiende con la actividad: un cliente que compra una vez al mes no vuelve a iniciar sesión. Vacío = default del despliegue.
+             */
+            customer_session_days?: number | null;
+            /**
+             * Sesión del personal (minutos)
+             * @description Cuánto dura la sesión de un usuario CON roles (panel/admin) sin actividad; con actividad se renueva sola. Vacío = default del despliegue.
+             */
+            staff_session_minutes?: number | null;
+            /**
              * Recuperación de contraseña
              * @description Permitir restablecer contraseña por correo. AVISO: apagarla con el registro cerrado y un solo administrador puede dejar la instalación sin acceso (la salida es el seed del servidor).
              */
             password_reset_enabled?: boolean | null;
+            /**
+             * Intentos antes de bloquear
+             * @description Intentos fallidos de inicio de sesión antes de bloquear la cuenta temporalmente. Vacío = default del despliegue.
+             */
+            login_attempts_before_lock?: number | null;
+            /**
+             * Vigencia de tokens por correo (minutos)
+             * @description Cuánto duran los tokens enviados por correo (registro, recuperación de contraseña, verificación de login). Vacío = default del despliegue.
+             */
+            email_token_minutes?: number | null;
+            /**
+             * Zona horaria de la instalación
+             * @description Zona IANA (p. ej. America/Monterrey, America/Mexico_City, UTC): define los límites de día de los filtros de calendario. Vacío = default del despliegue. El cambio aplica en segundos, sin reiniciar.
+             */
+            application_timezone?: string | null;
+            /**
+             * Copiloto: vigencia del ticket (segundos)
+             * @description Vigencia del ticket de conexión al copiloto (solo dura el handshake). Vacío = default del despliegue.
+             */
+            agent_ticket_ttl_seconds?: number | null;
+            /**
+             * Copiloto: vigencia del arriendo de credencial (segundos)
+             * @description Vigencia del secreto de proveedor de IA arrendado por turno. Vacío = default del despliegue.
+             */
+            agent_lease_ttl_seconds?: number | null;
             /**
              * Transporte de correo
              * @description environment: SMTP del despliegue (Mailpit en desarrollo); smtp/resend: credenciales guardadas aquí (cifradas).
@@ -2414,6 +3108,26 @@ export interface components {
             email_smtp_tls?: boolean | null;
             /** SSL directo */
             email_smtp_ssl?: boolean | null;
+            /**
+             * Analítica del sitio (GA4)
+             * @description Medir visitas y acciones del sitio público con Google Analytics 4. Requiere el ID de medición. El panel y el admin nunca se miden. Guía completa: docs/producto/puesta-en-marcha.md.
+             */
+            analytics_enabled?: boolean | null;
+            /**
+             * ID de medición de GA4
+             * @description Formato G-XXXXXXXXXX. En Google Analytics: Administración → Flujos de datos → tu flujo web → ID de medición. Es un identificador público.
+             */
+            analytics_ga4_measurement_id?: string | null;
+            /**
+             * Exigir consentimiento de cookies
+             * @description Mostrar un aviso de cookies analíticas: hasta que el visitante acepte no se carga Google Analytics ni se envía ningún evento.
+             */
+            analytics_require_consent?: boolean | null;
+            /**
+             * Modo de depuración (DebugView)
+             * @description Enviar los eventos marcados para GA4 DebugView y así validar la medición. Apagar en operación normal.
+             */
+            analytics_debug_mode?: boolean | null;
             /**
              * Inicio de sesión con Google
              * @description Muestra 'Continuar con Google' en el login. Requiere client ID y secret configurados. El alta de cuentas nuevas exige además el registro público habilitado.
@@ -2684,6 +3398,208 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReadinessRead"];
+                };
+            };
+        };
+    };
+    create_connection_ticket_api_v1_agent_connection_ticket_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionTicketRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    lease_credential_api_v1_internal_agent_credential_lease_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Internal-Auth"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CredentialLeaseRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialLeaseResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_credentials_api_v1_users_me_ai_providers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiProviderCredentialRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_credential_api_v1_users_me_ai_providers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AiProviderCredentialCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiProviderCredentialRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_credential_api_v1_users_me_ai_providers__credential_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                credential_id: string;
+            };
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_credential_api_v1_users_me_ai_providers__credential_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                credential_id: string;
+            };
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AiProviderCredentialUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiProviderCredentialRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -3633,6 +4549,340 @@ export interface operations {
             };
         };
     };
+    read_public_branding_api_v1_public_branding_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicBranding"];
+                };
+            };
+        };
+    };
+    read_public_logo_api_v1_public_branding_logo_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    read_public_logo_api_v1_public_branding_logo_head: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    read_pwa_icon_api_v1_public_branding_pwa_icon_get: {
+        parameters: {
+            query?: {
+                size?: number;
+                bg?: string;
+                padding?: number;
+                v?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    my_notifications_api_v1_notifications_me_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                unread_only?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyNotifications"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_all_my_notifications_api_v1_notifications_me_read_all_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_notification_api_v1_notifications__notification_id__read_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                notification_id: string;
+            };
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    push_public_key_api_v1_notifications_push_public_key_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushPublicKeyRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_push_subscription_api_v1_notifications_push_subscription_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "user-agent"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PushSubscribeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushSubscribeResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_push_subscription_api_v1_notifications_push_unsubscribe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PushUnsubscribeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushUnsubscribeResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    send_broadcast_api_v1_notifications_broadcast_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BroadcastRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_permissions_api_v1_permissions_get: {
         parameters: {
             query?: never;
@@ -3681,7 +4931,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ResourceCapability"][];
+                    "application/json": components["schemas"]["ResourceCatalogResponse"];
                 };
             };
             /** @description Validation Error */
@@ -4238,6 +5488,76 @@ export interface operations {
                 "application/json": components["schemas"]["SystemSettingsUpdate"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemSettingsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_brand_logo_api_v1_system_settings__item_id__logo_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_brand_logo_api_v1_system_settings__item_id__logo_put"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemSettingsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_brand_logo_api_v1_system_settings__item_id__logo_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { AccountMenu } from "@/components/layout/AccountMenu";
+import { NotificationsBell } from "@/components/layout/NotificationsBell";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { AnimatedOrb } from "@/components/ui/AnimatedOrb";
 import type { ResourceCatalog as ResourceCatalogType } from "@/core/api/contracts";
@@ -87,6 +88,30 @@ export function PlatformShell({
           >
             Inicio
           </Link>
+          <Link
+            href="/copilot"
+            onClick={() => setNavOpen(false)}
+            className={`block rounded-[10px] px-3 py-2 text-sm font-medium transition ${
+              pathname === "/copilot"
+                ? "bg-[var(--panel2)] text-[var(--tx)]"
+                : "text-[var(--tx2)] hover:bg-[var(--panel2)] hover:text-[var(--tx)]"
+            }`}
+          >
+            Copiloto
+          </Link>
+          {session.permissions?.includes("system_settings:configure") ? (
+            <Link
+              href="/branding"
+              onClick={() => setNavOpen(false)}
+              className={`block rounded-[10px] px-3 py-2 text-sm font-medium transition ${
+                pathname === "/branding"
+                  ? "bg-[var(--panel2)] text-[var(--tx)]"
+                  : "text-[var(--tx2)] hover:bg-[var(--panel2)] hover:text-[var(--tx)]"
+              }`}
+            >
+              Marca
+            </Link>
+          ) : null}
           {navItems.map((resource) => {
             const href = resourceHref(resource.name);
             const active = pathname === href || pathname.startsWith(`${href}/`);
@@ -130,6 +155,9 @@ export function PlatformShell({
           {/* Título del cromo, NO un heading: cada página aporta su propio h1/h2
               (evita headings duplicados para lectores de pantalla y tests). */}
           <p className="truncate text-lg font-semibold">{title}</p>
+          <div className="ml-auto flex items-center">
+            <NotificationsBell />
+          </div>
         </header>
         <main className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6">{children}</main>
       </div>

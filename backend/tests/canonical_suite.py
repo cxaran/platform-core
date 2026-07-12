@@ -36,6 +36,13 @@ BACKEND_CANONICAL_TEST_MODULES = (
     "backend.tests.test_backups",
     "backend.tests.test_login_verification",
     "backend.tests.test_google_login",
+    "backend.tests.test_session_ttl",
+    "backend.tests.test_notifications",
+    "backend.tests.test_push_notifications",
+    "backend.tests.test_agent_ticket",
+    "backend.tests.test_agent_internal_lease",
+    "backend.tests.test_runtime_policy_settings",
+    "backend.tests.test_branding",
 )
 
 
