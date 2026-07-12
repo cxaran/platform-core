@@ -88,3 +88,18 @@ from backend.app.services.system_settings_service import (  # noqa: E402
 )
 
 set_calendar_timezone_resolver(cached_application_timezone)
+
+# Métricas Prometheus en /metrics — FUERA de /api a propósito: nginx solo proxya
+# /api/, así que el endpoint queda accesible únicamente dentro de la red del stack
+# (scraping interno; jamás público). Con gunicorn multi-worker, la agregación entre
+# procesos usa PROMETHEUS_MULTIPROC_DIR (lo define compose; aquí se garantiza el dir).
+import os  # noqa: E402
+
+from prometheus_fastapi_instrumentator import Instrumentator  # noqa: E402
+
+_multiproc_dir = os.environ.get("PROMETHEUS_MULTIPROC_DIR")
+if _multiproc_dir:
+    os.makedirs(_multiproc_dir, exist_ok=True)
+Instrumentator(
+    excluded_handlers=["/metrics", "/api/health"],
+).instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)

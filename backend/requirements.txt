@@ -13,6 +13,10 @@ fastapi-mail==1.6.5
 python-multipart==0.0.32
 # Íconos de la PWA: render del logo cuadrado al vuelo (services/pwa_icon_service).
 Pillow==12.3.0
+# Métricas Prometheus en /metrics (interno: nginx solo proxya /api/). Con gunicorn
+# multi-worker se agrega vía PROMETHEUS_MULTIPROC_DIR (compose lo define).
+prometheus-fastapi-instrumentator==8.0.2
+prometheus-client==0.25.0
 redis==8.0.0
 
 # Cliente HTTP server-side: verificación de dominio por nonce y transporte Resend.

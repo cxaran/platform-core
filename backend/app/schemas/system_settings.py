@@ -145,6 +145,29 @@ class SystemSettingsUpdate(ApiPatchSchema):
         json_schema_extra={"ui": {"form": True, "widget": "number"}},
     )
 
+    audit_retention_days: Optional[int] = Field(
+        default=None,
+        ge=30,
+        le=3650,
+        title="Retención de auditoría (días)",
+        description=(
+            "La poda diaria elimina de la bitácora lo más antiguo que esta ventana. "
+            "Vacío = conservar todo."
+        ),
+        json_schema_extra={"ui": {"form": True, "widget": "number"}},
+    )
+    notification_retention_days: Optional[int] = Field(
+        default=None,
+        ge=7,
+        le=3650,
+        title="Retención de notificaciones leídas (días)",
+        description=(
+            "La poda diaria elimina las notificaciones LEÍDAS más antiguas que esta "
+            "ventana (las no leídas nunca se podan). Vacío = conservar todo."
+        ),
+        json_schema_extra={"ui": {"form": True, "widget": "number"}},
+    )
+
     @field_validator("application_timezone")
     @classmethod
     def _validate_iana_timezone(cls, value: Optional[str]) -> Optional[str]:
@@ -344,6 +367,9 @@ class SystemSettingsRead(ApiReadSchema):
     application_timezone_effective: str
     agent_ticket_ttl_seconds_effective: int
     agent_lease_ttl_seconds_effective: int
+    # Retención de datos (None = sin poda; no hay default de despliegue).
+    audit_retention_days: Optional[int] = None
+    notification_retention_days: Optional[int] = None
     # Correo: estado SEGURO (metadata; los secretos jamás se proyectan).
     email_mode: str
     email_from_address: Optional[str] = None

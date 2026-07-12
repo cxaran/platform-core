@@ -655,6 +655,27 @@ class BackupService:
 
     def __init__(self, worker_id: Optional[str] = None) -> None:
         self.worker_id = worker_id or f"worker-{uuid.uuid4().hex[:8]}"
+        # Alertas operativas creadas durante el tick: al final se patea el despacho
+        # de correos UNA vez (post-commit); el worker no tiene los kicks del flujo web.
+        self._alerts_pending = False
+
+    def _alert_backup_admins(self, session: Session, *, title: str, body: str) -> None:
+        """Alerta ACTIVA a los administradores de respaldos (campana + correo + push).
+
+        SIN commit: viaja en la transacción del evento que la origina. Sin esto, un
+        fallo definitivo solo dejaba `last_error` en el panel — silencio operativo.
+        """
+        from backend.app.security.groups.backups import BackupPermissions
+        from backend.app.services.notification_service import notify_users_with_permission
+
+        notify_users_with_permission(
+            session,
+            permission=BackupPermissions.CONFIGURE.permission,
+            title=title,
+            body=body,
+            link_url="/backups",
+        )
+        self._alerts_pending = True
 
     # -- ciclo ------------------------------------------------------------------
 
@@ -672,9 +693,19 @@ class BackupService:
             session.commit()
 
         run_id = self._claim_one()
-        if run_id is None:
-            return
-        self._process_claimed(run_id)
+        try:
+            if run_id is not None:
+                self._process_claimed(run_id)
+        finally:
+            # Despacho de correos de las alertas creadas en ESTE tick (post-commit).
+            # El worker no tiene los kicks del flujo web; sin esto quedarían pending.
+            if self._alerts_pending:
+                self._alerts_pending = False
+                from backend.app.services.notification_service import (
+                    kick_notification_dispatch,
+                )
+
+                kick_notification_dispatch()
 
     # -- fases ------------------------------------------------------------------
 
@@ -1127,6 +1158,15 @@ class BackupService:
             )
             with Session(engine) as session:
                 config = get_backup_settings(session, for_update=True)
+                if config.drive_status != BackupDriveStatus.NEEDS_REAUTH:
+                    self._alert_backup_admins(
+                        session,
+                        title="Google Drive requiere reconexión",
+                        body=(
+                            "Los respaldos quedaron DETENIDOS: la conexión con Google "
+                            "Drive dejó de servir y hay que reconectarla desde el panel."
+                        ),
+                    )
                 config.drive_status = BackupDriveStatus.NEEDS_REAUTH
                 config.last_error_code = error.code
                 config.last_error_summary = error.summary
@@ -1370,6 +1410,16 @@ class BackupService:
             if run is not None:
                 self._finish_failed(session, run, code=code, summary=summary)
             config = get_backup_settings(session, for_update=True)
+            # Alerta específica SOLO al transicionar (no se repite en cada tick).
+            if config.drive_status != BackupDriveStatus.NEEDS_REAUTH:
+                self._alert_backup_admins(
+                    session,
+                    title="Google Drive requiere reconexión",
+                    body=(
+                        "Los respaldos quedaron DETENIDOS: la conexión con Google "
+                        "Drive dejó de servir y hay que reconectarla desde el panel."
+                    ),
+                )
             config.drive_status = BackupDriveStatus.NEEDS_REAUTH
             session.add(config)
             session.commit()
@@ -1391,6 +1441,15 @@ class BackupService:
         config.last_error_summary = summary
         config.last_error_at = utc_now()
         session.add(config)
+
+        self._alert_backup_admins(
+            session,
+            title="Respaldo fallido",
+            body=(
+                f"El respaldo agotó sus intentos y quedó FALLIDO ({code}): {summary} "
+                "Revisa la configuración de respaldos."
+            ),
+        )
 
 
 # Instancia por proceso (la usa la tarea Taskiq).

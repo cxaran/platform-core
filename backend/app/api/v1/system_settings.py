@@ -81,6 +81,8 @@ def _serialize_read(session: SessionDep, row: SystemSettings) -> SystemSettingsR
         agent_lease_ttl_seconds_effective=(
             row.agent_lease_ttl_seconds or settings.agent_gateway_lease_ttl_seconds
         ),
+        audit_retention_days=row.audit_retention_days,
+        notification_retention_days=row.notification_retention_days,
         email_mode=row.email_mode,
         email_from_address=row.email_from_address,
         email_from_name=row.email_from_name,

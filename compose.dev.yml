@@ -94,6 +94,9 @@ services:
     env_file: ${APP_ENV_FILE:-.env}
     environment:
       <<: *backend-environment
+    # La imagen trae healthcheck de la API; este contenedor no la sirve.
+    healthcheck:
+      disable: true
     command: [ "alembic", "-c", "backend/alembic.ini", "upgrade", "head" ]
     depends_on:
       postgres:
@@ -110,6 +113,8 @@ services:
     env_file: ${APP_ENV_FILE:-.env}
     environment:
       <<: *backend-environment
+    healthcheck:
+      disable: true
     command: [ "taskiq", "worker", "backend.app.taskiq_app:broker", "--workers", "1", "--max-async-tasks", "1" ]
     depends_on:
       postgres:
@@ -127,6 +132,8 @@ services:
     env_file: ${APP_ENV_FILE:-.env}
     environment:
       <<: *backend-environment
+    healthcheck:
+      disable: true
     command: [ "taskiq", "scheduler", "backend.app.taskiq_app:scheduler", "--skip-first-run" ]
     depends_on:
       postgres:
@@ -164,8 +171,16 @@ services:
     volumes:
       - ./model-gateway:/app
       - gateway_node_modules:/app/node_modules
+    healthcheck:
+      # El target dev no define healthcheck en la imagen (tsx watch): se define aquí.
+      test: [ "CMD", "node", "-e", "fetch('http://127.0.0.1:8081/healthz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))" ]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
   frontend:
     build:
@@ -205,6 +220,12 @@ services:
       - ./docs:/docs/docs:ro
     ports:
       - "${DOCS_PORT:-8030}:8000"
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/docs/', timeout=3).status == 200 else 1)" ]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
     restart: unless-stopped
 
   # Entrada nginx dev en UN solo origen (http://localhost:8080): necesaria para el
@@ -216,11 +237,17 @@ services:
       - "${DEV_HTTP_PORT:-8080}:80"
     volumes:
       - ./nginx/nginx.dev.conf:/etc/nginx/conf.d/default.conf:ro
+    # nginx valida upstreams al cargar la config: readiness real evita el crash-loop
+    # del arranque en frío (frontend dev no tiene healthcheck: basta con created).
     depends_on:
-      - frontend
-      - backend
-      - model-gateway
-      - docs
+      frontend:
+        condition: service_started
+      backend:
+        condition: service_healthy
+      model-gateway:
+        condition: service_healthy
+      docs:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:

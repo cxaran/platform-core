@@ -59,6 +59,8 @@ nav:
   - Operación:
       - Instalación: operacion/instalacion.md
       - Respaldos: operacion/respaldos.md
+      - Observabilidad: operacion/observabilidad.md
+      - Solución de problemas: operacion/solucion-problemas.md
   - Producto:
       - Puesta en marcha: producto/puesta-en-marcha.md
   - Desarrollo:

@@ -56,9 +56,41 @@ libres) y contiene
 `manifest.json` (versión de formato, run id, fecha, sha del dump — **sin** datos
 clínicos, usuarios, tokens ni rutas).
 
-**Restauración (manual, fuera de la UI en esta fase):** descargar el archivo; si es
-`.tar.age`, `age --decrypt -i <identidad-privada>` primero; extraer el tar y
-`pg_restore` del dump.
+## Restauración y simulacro
+
+Un respaldo sin restauración probada es una hipótesis. El repositorio incluye
+`scripts/restore.sh`, que restaura un archivo del pipeline usando las mismas
+herramientas de la imagen del backend (age + pg_restore) — no requiere nada
+instalado en el host además de Docker y el stack levantado.
+
+**Simulacro (recomendado al menos una vez al mes):** restaura a una base
+separada (`<POSTGRES_DB>_drill`) sin tocar producción, y verifica el resultado
+(conteo de tablas y usuarios):
+
+```bash
+# descarga el archivo desde el panel de respaldos y luego:
+./scripts/restore.sh respaldo-2026-07-12.tar.age --identity clave-age-privada.txt
+```
+
+El simulacro comprueba las tres cosas que fallan en el peor momento: que el
+archivo se descarga íntegro, que **tu clave privada age realmente lo abre**, y
+que el dump restaura contra la versión actual de PostgreSQL.
+
+!!! note "Aviso conocido"
+    Si el `pg_dump` de la imagen es más nuevo que el servidor (p. ej. cliente 17
+    contra PostgreSQL 16), `pg_restore` reporta un error ignorado por
+    `SET transaction_timeout` — es benigno; el script lo señala y valida el
+    resultado por su verificación posterior.
+
+**Restauración real sobre producción** (reemplaza el contenido de la base):
+
+```bash
+docker compose stop backend taskiq-worker taskiq-scheduler
+./scripts/restore.sh <archivo> --identity <clave> --to-production
+docker compose up -d
+```
+
+Pide escribir el nombre exacto de la base como confirmación; nada se toca sin ella.
 
 ## Google Drive
 
@@ -66,9 +98,9 @@ clínicos, usuarios, tokens ni rutas).
   nunca a todo el Drive). `access_type=offline` + `prompt=consent` para obtener
   refresh token. El `state` se guarda **hasheado** (SHA-256), expira en 10 minutos y
   se consume una sola vez.
-- Carpeta **visible** "MediCopilot Backups" creada por la app (no `appDataFolder`);
+- Carpeta **visible** "Platform Core Backups" creada por la app (no `appDataFolder`);
   en reconexión se valida la carpeta guardada y se crea una nueva si ya no existe.
-- Subida **resumible** con `appProperties` (`medicopilot_backup_run_id` + sha256):
+- Subida **resumible** con `appProperties` (`platform_core_backup_run_id` + sha256):
   si una carga terminó en Google pero la respuesta se perdió, el reintento
   **reconcilia** por run id + checksum en vez de duplicar.
 

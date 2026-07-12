@@ -122,6 +122,7 @@ def notify_users_with_permission(
     title: str,
     body: str,
     kind: str = "system",
+    link_url: Optional[str] = None,
 ) -> int:
     """Crea una notificación por cada usuario activo con ``permission``.
 
@@ -130,7 +131,7 @@ def notify_users_with_permission(
     recipients = users_with_permission(session, permission)
     for user in recipients:
         create_notification(
-            session, user_id=user.id, kind=kind, title=title, body=body
+            session, user_id=user.id, kind=kind, title=title, body=body, link_url=link_url
         )
     return len(recipients)
 

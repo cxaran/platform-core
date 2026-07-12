@@ -43,6 +43,7 @@ BACKEND_CANONICAL_TEST_MODULES = (
     "backend.tests.test_agent_internal_lease",
     "backend.tests.test_runtime_policy_settings",
     "backend.tests.test_branding",
+    "backend.tests.test_maintenance",
 )
 
 

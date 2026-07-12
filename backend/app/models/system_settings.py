@@ -67,6 +67,14 @@ class SystemSettings(Base):
             name="system_settings_agent_lease_ttl_positive",
         ),
         CheckConstraint(
+            "audit_retention_days IS NULL OR audit_retention_days > 0",
+            name="system_settings_audit_retention_positive",
+        ),
+        CheckConstraint(
+            "notification_retention_days IS NULL OR notification_retention_days > 0",
+            name="system_settings_notification_retention_positive",
+        ),
+        CheckConstraint(
             "login_verification_mode in ('disabled', 'code', 'link')",
             name="system_settings_login_verification_mode",
         ),
@@ -172,6 +180,24 @@ class SystemSettings(Base):
             "Minutos de vigencia de los tokens enviados por correo (registro, "
             "recuperación, verificación de login). NULL = usar el default del "
             "despliegue (EMAIL_TOKEN_EXPIRE_MINUTES)."
+        ),
+    )
+
+    # -- Retención de datos operativos (poda diaria; NULL = conservar todo) ---------
+    audit_retention_days: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        comment=(
+            "Días a conservar en la bitácora de auditoría; la poda diaria elimina lo "
+            "más antiguo. NULL = sin poda (crecimiento sin límite)."
+        ),
+    )
+    notification_retention_days: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        comment=(
+            "Días a conservar las notificaciones LEÍDAS; la poda diaria elimina las "
+            "leídas más antiguas (las no leídas nunca se podan). NULL = sin poda."
         ),
     )
 

@@ -20,12 +20,23 @@ RUN apt-get update \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Usuario NO privilegiado (paridad con frontend y model-gateway): la API no necesita
+# root. /tmp queda escribible para los artefactos temporales de respaldo y métricas.
+RUN useradd --system --create-home --shell /usr/sbin/nologin app
+
+# Healthcheck con la stdlib (la imagen no trae curl/wget): lo usa compose para
+# ordenar el arranque (service_healthy) y el operador para diagnóstico.
+HEALTHCHECK --interval=10s --timeout=5s --start-period=25s --retries=5 \
+    CMD ["python", "-c", "import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3).status == 200 else 1)"]
+
 FROM deps AS dev
 COPY . backend/
 EXPOSE 8000
+USER app
 CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
 FROM deps AS prod
 COPY . backend/
 EXPOSE 8000
+USER app
 CMD ["gunicorn", "backend.app.main:app", "-k", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000", "--workers", "4"]
