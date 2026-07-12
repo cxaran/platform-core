@@ -85,7 +85,7 @@ class LegacyFiltersRemovedTest(unittest.TestCase):
 
     def test_permission_filtering_preserved(self) -> None:
         with _As("users:read"):
-            names = [r["name"] for r in client.get("/api/v1/resources").json()]
+            names = [r["name"] for r in client.get("/api/v1/resources").json()["resources"]]
         self.assertEqual(names, ["users"])
 
 

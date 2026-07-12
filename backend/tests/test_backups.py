@@ -343,10 +343,8 @@ class BackupApiAndTickTest(unittest.TestCase):
 
     def test_connect_drive_without_oauth_config_is_409(self) -> None:
         sid = self._settings_id()
-        # Se fija el estado "sin OAuth configurado" explícitamente: el entorno de la
-        # suite puede traer credenciales reales de Google.
-        with mock.patch.object(backups.settings, "google_drive_client_id", None),                 mock.patch.object(backups.settings, "google_drive_client_secret", None):
-            resp = self.client.post(f"/api/v1/backup-settings/{sid}/connect-drive")
+        # La fila sembrada no trae credenciales OAuth (única fuente: la base).
+        resp = self.client.post(f"/api/v1/backup-settings/{sid}/connect-drive")
         self.assertEqual(resp.status_code, 409, resp.text)
 
     def test_run_now_requires_complete_configuration(self) -> None:
@@ -382,7 +380,10 @@ class BackupApiAndTickTest(unittest.TestCase):
 
     # -- Credenciales del cliente OAuth de Google en la fila ------------------------
 
-    def test_drive_client_secret_is_write_only_and_db_takes_priority(self) -> None:
+    def test_drive_client_secret_is_write_only_and_resolves_from_db(self) -> None:
+        from backend.app.services.system_settings_service import get_system_settings
+        from backend.app.utils.utc_now import utc_now
+
         sid = self._settings_id()
         with self._with_fernet_key():
             resp = self.client.patch(
@@ -397,16 +398,30 @@ class BackupApiAndTickTest(unittest.TestCase):
             self.assertTrue(body["google_drive_client_secret_configured"])
             self.assertNotIn("GOCSPX-super-secreto", resp.text)
 
-            # resolve_drive_oauth prioriza la fila sobre el entorno.
+            # resolve_drive_oauth lee SOLO la fila; el redirect se deriva del
+            # dominio base verificado (no hay fallback de entorno).
             with Session(self.engine) as session:
-                with mock.patch.object(backups.settings, "google_drive_client_id", "env-id"), \
-                        mock.patch.object(
-                            backups.settings, "google_drive_redirect_uri", "http://x/cb"
-                        ):
+                row = get_system_settings(session, for_update=True)
+                row.app_base_url = "https://empresa.example.com"
+                row.app_base_url_verified_at = utc_now()
+                session.add(row)
+                session.commit()
+            try:
+                with Session(self.engine) as session:
                     client_id, client_secret, redirect = backups.resolve_drive_oauth(session)
-            self.assertEqual(client_id, "db-client-id.apps.googleusercontent.com")
-            self.assertEqual(client_secret, "GOCSPX-super-secreto")
-            self.assertEqual(redirect, "http://x/cb")
+                self.assertEqual(client_id, "db-client-id.apps.googleusercontent.com")
+                self.assertEqual(client_secret, "GOCSPX-super-secreto")
+                self.assertEqual(
+                    redirect,
+                    "https://empresa.example.com/api/v1/backups/google-drive/callback",
+                )
+            finally:
+                with Session(self.engine) as session:
+                    row = get_system_settings(session, for_update=True)
+                    row.app_base_url = None
+                    row.app_base_url_verified_at = None
+                    session.add(row)
+                    session.commit()
 
             # null borra el secreto.
             clear = self.client.patch(
@@ -429,8 +444,7 @@ class BackupApiAndTickTest(unittest.TestCase):
             session.commit()
         try:
             with Session(self.engine) as session:
-                with mock.patch.object(backups.settings, "google_drive_redirect_uri", None):
-                    redirect = backups.resolve_drive_redirect_uri(session)
+                redirect = backups.resolve_drive_redirect_uri(session)
             self.assertEqual(
                 redirect,
                 "https://empresa.example.com/api/v1/backups/google-drive/callback",

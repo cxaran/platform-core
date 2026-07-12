@@ -32,6 +32,7 @@ os.environ.update(DEV_ENV)
 from backend.app.security.catalog import SECURITY_GROUPS  # noqa: E402
 from backend.app.security.groups.audit_events import AuditEventPermissions  # noqa: E402
 from backend.app.security.groups.backups import BackupPermissions  # noqa: E402
+from backend.app.security.groups.notifications import NotificationPermissions  # noqa: E402
 from backend.app.security.groups.permissions import PermissionPermissions  # noqa: E402
 from backend.app.security.groups.roles import RolePermissions  # noqa: E402
 from backend.app.security.groups.system_settings import SystemSettingsPermissions  # noqa: E402
@@ -49,6 +50,7 @@ class SecurityCatalogTest(unittest.TestCase):
                 SystemSettingsPermissions,
                 BackupPermissions,
                 AuditEventPermissions,
+                NotificationPermissions,
             ],
         )
 
@@ -75,6 +77,7 @@ class SecurityCatalogTest(unittest.TestCase):
                 "backups:read",
                 "backups:configure",
                 "audit_events:read",
+                "notifications:send",
             ],
         )
 

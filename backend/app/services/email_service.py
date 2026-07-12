@@ -83,8 +83,38 @@ def transport_unavailable_reason(config: SystemSettings) -> Optional[str]:
     return None
 
 
+def action_email_html(*, message: str, action_url: str, action_label: str) -> str:
+    """Cuerpo HTML mínimo con un botón de acción (estilos inline para clientes de
+    correo). El texto y la URL se escapan; el texto plano con la URL sigue siendo
+    el fallback para clientes sin HTML."""
+    import html as html_module
+
+    safe_url = html_module.escape(action_url, quote=True)
+    safe_label = html_module.escape(action_label)
+    paragraphs = "".join(
+        f'<p style="margin:0 0 12px 0;">{html_module.escape(line)}</p>'
+        for line in message.splitlines()
+        if line.strip()
+    )
+    return (
+        '<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;'
+        'line-height:1.6;color:#1f2937;max-width:520px;margin:0 auto;padding:24px;">'
+        f"{paragraphs}"
+        '<p style="margin:24px 0;">'
+        f'<a href="{safe_url}" '
+        'style="display:inline-block;background-color:#111827;color:#ffffff;'
+        "text-decoration:none;padding:12px 24px;border-radius:8px;"
+        'font-weight:bold;">'
+        f"{safe_label}</a></p>"
+        '<p style="margin:0;font-size:12px;color:#6b7280;">'
+        "Si el botón no funciona, copia y pega este enlace en tu navegador:<br>"
+        f'<a href="{safe_url}" style="color:#374151;word-break:break-all;">{safe_url}</a>'
+        "</p></div>"
+    )
+
+
 async def _send_via_fastapi_mail(
-    *, subject: str, email_to: str, message: str, connection_config
+    *, subject: str, email_to: str, message: str, connection_config, html: Optional[str] = None
 ) -> None:
     from fastapi_mail import FastMail, MessageSchema, MessageType
     from pydantic import NameEmail
@@ -92,8 +122,8 @@ async def _send_via_fastapi_mail(
     email = MessageSchema(
         subject=subject,
         recipients=[NameEmail(name=email_to, email=email_to)],
-        body=message,
-        subtype=MessageType.plain,
+        body=html if html is not None else message,
+        subtype=MessageType.html if html is not None else MessageType.plain,
     )
     await FastMail(connection_config).send_message(email)
 
@@ -122,7 +152,7 @@ def _smtp_connection_config(config: SystemSettings):
 
 
 async def _send_via_resend(
-    *, subject: str, email_to: str, message: str, config: SystemSettings
+    *, subject: str, email_to: str, message: str, config: SystemSettings, html: Optional[str] = None
 ) -> None:
     import httpx
 
@@ -136,11 +166,19 @@ async def _send_via_resend(
     sender = config.email_from_address or ""
     if config.email_from_name:
         sender = f"{config.email_from_name} <{sender}>"
+    payload: dict[str, object] = {
+        "from": sender,
+        "to": [email_to],
+        "subject": subject,
+        "text": message,
+    }
+    if html is not None:
+        payload["html"] = html
     async with httpx.AsyncClient(timeout=httpx.Timeout(_RESEND_TIMEOUT_SECONDS)) as client:
         response = await client.post(
             _RESEND_ENDPOINT,
             headers={"Authorization": f"Bearer {api_key}"},
-            json={"from": sender, "to": [email_to], "subject": subject, "text": message},
+            json=payload,
         )
     if response.status_code >= 400:
         # Sin volcar el cuerpo del proveedor (puede incluir el remitente/detalles).
@@ -153,8 +191,12 @@ async def send_system_email(
     subject: str,
     email_to: str,
     message: str,
+    html: Optional[str] = None,
 ) -> EmailOutcome:
-    """Envía con el transporte configurado. Best-effort: NUNCA lanza."""
+    """Envía con el transporte configurado. Best-effort: NUNCA lanza.
+
+    ``html`` es opcional (p. ej. botón de acción); ``message`` sigue siendo el
+    texto plano — con Resend viajan ambos, con SMTP se prefiere el HTML."""
     from backend.app.services.system_settings_service import get_system_settings
 
     config = get_system_settings(session)
@@ -166,7 +208,7 @@ async def send_system_email(
     try:
         if config.email_mode == "resend":
             await _send_via_resend(
-                subject=subject, email_to=email_to, message=message, config=config
+                subject=subject, email_to=email_to, message=message, config=config, html=html
             )
         elif config.email_mode == "smtp":
             await _send_via_fastapi_mail(
@@ -174,6 +216,7 @@ async def send_system_email(
                 email_to=email_to,
                 message=message,
                 connection_config=_smtp_connection_config(config),
+                html=html,
             )
         else:
             await _send_via_fastapi_mail(
@@ -181,6 +224,7 @@ async def send_system_email(
                 email_to=email_to,
                 message=message,
                 connection_config=settings.mail_config,
+                html=html,
             )
     except Exception as error:
         # Resumen SEGURO: clase del error / código propio, jamás credenciales.

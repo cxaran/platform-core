@@ -5,7 +5,11 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { ApiRequestError } from "@/core/api/api-error";
-import type { ResourceCapability, ResourceCatalog } from "@/core/api/contracts";
+import type {
+  ResourceCapability,
+  ResourceCatalog,
+  ResourceCatalogResponse,
+} from "@/core/api/contracts";
 import { serverApi } from "@/core/api/server-client";
 
 async function currentCookie(): Promise<string> {
@@ -22,9 +26,13 @@ async function currentCookie(): Promise<string> {
  */
 export const getResourceCatalog = cache(async (): Promise<ResourceCatalog> => {
   try {
-    return await serverApi<ResourceCatalog>("/api/v1/resources", {
+    // El endpoint devuelve el envelope {resources, navigation_modules}; se
+    // desenvuelve a la lista de recursos (los módulos de navegación no se usan
+    // en la base). serverApi fija cache: "no-store".
+    const catalog = await serverApi<ResourceCatalogResponse>("/api/v1/resources", {
       cookie: await currentCookie(),
     });
+    return catalog.resources;
   } catch (error) {
     if (error instanceof ApiRequestError && error.status === 401) {
       redirect("/login");

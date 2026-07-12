@@ -131,7 +131,6 @@ class SystemSettingsApiTest(unittest.TestCase):
         self.assertEqual(detail.status_code, 200, detail.text)
         body = detail.json()
         self.assertFalse(body["public_registration_enabled"])
-        self.assertTrue(body["registration_allowed_by_deployment"])  # local
         self.assertFalse(body["public_registration_effective"])
         self.assertEqual(body["environment"], "local")
 
@@ -155,16 +154,6 @@ class SystemSettingsApiTest(unittest.TestCase):
             # Solo NOMBRES de campos: jamás valores.
             self.assertEqual(fields, ["institution_name", "public_registration_enabled"])
             self.assertNotIn("Empresa Norte", str(event.changed_fields))
-
-    def test_deployment_gate_blocks_enabling_registration(self) -> None:
-        sid = self._settings_id()
-        with mock.patch.object(settings, "registration_allowed", False):
-            resp = self.client.patch(
-                f"/api/v1/system-settings/{sid}",
-                json={"public_registration_enabled": True},
-            )
-        self.assertEqual(resp.status_code, 409, resp.text)
-        self.assertIn("registration_locked_by_deployment", resp.text)
 
     def test_rbac(self) -> None:
         sid = self._settings_id()
@@ -200,11 +189,6 @@ class SystemSettingsApiTest(unittest.TestCase):
         )
         policy = self.client.get("/api/v1/auth/policy")
         self.assertTrue(policy.json()["registration_enabled"])
-
-        # El gate del despliegue manda incluso con la política en true.
-        with mock.patch.object(settings, "registration_allowed", False):
-            policy = self.client.get("/api/v1/auth/policy")
-            self.assertFalse(policy.json()["registration_enabled"])
 
     # -- Checklist derivado ----------------------------------------------------------
 

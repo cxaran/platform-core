@@ -77,16 +77,17 @@ class ResourcesAuthTest(unittest.TestCase):
         self.assertEqual(client.get("/api/v1/resources").status_code, 401)
 
     def test_partial_permissions_only_returns_allowed_resources(self) -> None:
+        # El catálogo es un envelope {resources, navigation_modules}.
         with _As("users:read"):
             body = client.get("/api/v1/resources").json()
-        names = [resource["name"] for resource in body]
+        names = [resource["name"] for resource in body["resources"]]
         self.assertEqual(names, ["users"])
 
     def test_revoke_visible_resource_requires_read_not_revoke(self) -> None:
         # Tiene revoke pero no read: no debe ver el recurso users en el catálogo.
         with _As("users:revoke_sessions"):
             body = client.get("/api/v1/resources").json()
-        self.assertEqual([r["name"] for r in body], [])
+        self.assertEqual([r["name"] for r in body["resources"]], [])
 
     def test_hidden_and_missing_return_same_404(self) -> None:
         with _As("users:read"):
@@ -151,7 +152,7 @@ class RevokeEndpointPermissionTest(unittest.TestCase):
 class PermissionsResourceTest(unittest.TestCase):
     def test_permissions_requires_its_read_permission(self) -> None:
         with _As("users:read"):
-            names = [r["name"] for r in client.get("/api/v1/resources").json()]
+            names = [r["name"] for r in client.get("/api/v1/resources").json()["resources"]]
         self.assertNotIn("permissions", names)
 
     def test_permissions_is_grouped_catalog_without_table_shape(self) -> None:
@@ -166,7 +167,7 @@ class PermissionsResourceTest(unittest.TestCase):
 class CapabilityContentTest(unittest.TestCase):
     def test_no_permission_strings_leak_in_payload(self) -> None:
         with _As(*declared_permissions()):
-            blob = json.dumps(client.get("/api/v1/resources").json())
+            blob = json.dumps(client.get("/api/v1/resources").json()["resources"])
         leaks = [permission for permission in declared_permissions() if permission in blob]
         self.assertEqual(leaks, [])
 
@@ -177,7 +178,7 @@ class CapabilityContentTest(unittest.TestCase):
 
     def test_all_projected_fields_have_labels(self) -> None:
         with _As(*declared_permissions()):
-            resources = client.get("/api/v1/resources").json()
+            resources = client.get("/api/v1/resources").json()["resources"]
         for resource in resources:
             for field in resource.get("list", {}).get("fields", []):
                 self.assertTrue(field["label"], resource["name"])
@@ -351,7 +352,7 @@ class PermissionsCatalogTest(unittest.TestCase):
         with _As("permissions:read"):
             groups = client.get("/api/v1/permissions").json()
         names = [group["name"] for group in groups]
-        self.assertEqual(names, ["users", "roles", "permissions", "system_settings", "backups", "audit_events"])
+        self.assertEqual(names, ["users", "roles", "permissions", "system_settings", "backups", "audit_events", "notifications"])
         for group in groups:
             self.assertTrue(group["label"])
             for permission in group["permissions"]:

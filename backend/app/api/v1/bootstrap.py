@@ -137,9 +137,12 @@ def _payload_to_input(payload: BootstrapInitializeRequest) -> BootstrapInitializ
             label=payload.system_admin_role.label,
             description=payload.system_admin_role.description,
         ),
+        app_base_url=payload.app_base_url,
         public_registration_enabled=payload.public_registration_enabled,
         password_reset_enabled=payload.password_reset_enabled,
         institution_name=payload.institution_name,
+        customer_session_days=payload.customer_session_days,
+        staff_session_minutes=payload.staff_session_minutes,
         additional_roles=[
             BootstrapAdditionalRoleInput(
                 name=role.name,

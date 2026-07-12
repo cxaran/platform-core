@@ -14,7 +14,7 @@ Reglas del contrato:
 """
 
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import Field, model_validator
 
@@ -455,6 +455,24 @@ class ResourceRelatedListCapability(ApiReadSchema):
     parameter_name: str
 
 
+class NavigationModule(ApiReadSchema):
+    """Módulo ESPECIALIZADO navegable (pantalla propia, no tabla genérica).
+
+    Contrato mínimo de navegación: el frontend solo enlaza (``href``) según la
+    sección (``admin`` o ``panel``); no describe columnas ni formularios — esos
+    viven en la pantalla especializada. ``required_permissions`` es un *anyOf*:
+    el módulo se proyecta si el usuario tiene ALGUNO de esos permisos (y el
+    backend de cada pantalla revalida siempre los suyos)."""
+
+    name: str
+    label: str
+    href: str
+    section: Literal["admin", "panel"]
+    # anyOf: basta uno para que el módulo sea visible. Es la ÚNICA parte del
+    # contrato que declara permisos: son requisitos de navegación, no capacidades.
+    required_permissions: list[str]
+
+
 class ResourceCapability(ApiReadSchema):
     name: str
     label: str
@@ -474,3 +492,17 @@ class ResourceCapability(ApiReadSchema):
     # Listas relacionadas navegables por item, filtradas por permiso de lectura del
     # recurso destino.
     related_lists: list[ResourceRelatedListCapability] = []
+
+
+class ResourceCatalogResponse(ApiReadSchema):
+    """Respuesta de ``GET /api/v1/resources``: catálogo completo de navegación.
+
+    - ``resources``: capabilities de los recursos tabulares/catálogo visibles para
+      el usuario (mismo contenido que antes del envelope).
+    - ``navigation_modules``: módulos ESPECIALIZADOS (pantallas propias como el
+      editor del sitio o el POS) proyectados por permisos — solo aparecen los
+      módulos donde el usuario tiene ALGUNO de sus ``required_permissions``.
+    """
+
+    resources: list[ResourceCapability]
+    navigation_modules: list[NavigationModule] = []

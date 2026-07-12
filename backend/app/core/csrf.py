@@ -112,12 +112,21 @@ class MutationOriginGuardMiddleware(BaseHTTPMiddleware):
         if SESSION_COOKIE_KEY not in request.cookies:
             return await call_next(request)
 
-        from backend.app.core.runtime_origins import verified_origins
+        from backend.app.core.runtime_origins import (
+            refresh_from_database_if_stale,
+            verified_origins,
+        )
 
-        # Entorno + dominio verificado por el administrador (solo AÑADE, nunca
-        # reemplaza: un dominio mal guardado no puede dejarte fuera).
+        # Entorno + dominio de la instalación declarado/verificado (solo AÑADE,
+        # nunca reemplaza: un dominio mal guardado no puede dejarte fuera).
         allowed = get_settings().trusted_origins | verified_origins()
         origin = _request_browser_origin(request)
+        if origin is not None and origin not in allowed:
+            # Multi-worker: este proceso puede no haber visto un dominio recién
+            # declarado (bootstrap/verify-domain atendido por otro worker). Se
+            # recarga desde la base —con intervalo mínimo— antes de rechazar.
+            if refresh_from_database_if_stale():
+                allowed = get_settings().trusted_origins | verified_origins()
         if origin is None or origin not in allowed:
             return _forbidden()
         return await call_next(request)

@@ -11,6 +11,8 @@ pydantic-settings==2.14.2
 
 fastapi-mail==1.6.5
 python-multipart==0.0.32
+# Íconos de la PWA: render del logo cuadrado al vuelo (services/pwa_icon_service).
+Pillow==12.3.0
 redis==8.0.0
 
 # Cliente HTTP server-side: verificación de dominio por nonce y transporte Resend.
@@ -37,6 +39,10 @@ argon2-cffi==25.1.0
 # Cifrado simétrico (Fernet) de secretos de configuración en reposo
 # (services/secret_cipher.py): SMTP/Resend, tokens de Google Drive.
 cryptography==49.0.0
+
+# Web Push (VAPID) hacia los navegadores suscritos (services/push_service.py):
+# cifrado RFC 8291 + firma VAPID. Trae py-vapid y http-ece.
+pywebpush==2.3.0
 
 # Elige una estrategia JWT principal:
 PyJWT[crypto]==2.13.0

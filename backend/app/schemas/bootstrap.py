@@ -2,6 +2,7 @@ from pydantic import EmailStr, Field, SecretStr, field_validator, model_validato
 from typing_extensions import Self
 
 from backend.app.bootstrap.service import MAX_ADDITIONAL_ROLES
+from backend.app.core.runtime_origins import normalize_base_url
 from backend.app.schemas.base import ApiReadSchema, ApiWriteSchema
 from backend.app.schemas.user import validate_password
 
@@ -81,6 +82,16 @@ class BootstrapInitializeRequest(ApiWriteSchema):
     # Política inicial de la plataforma (editable después en Configuración del
     # sistema). El bootstrap NUNCA recibe secretos de terceros: esas integraciones
     # se configuran autenticado y auditado, en el checklist post-bootstrap.
+    app_base_url: str | None = Field(
+        default=None,
+        max_length=200,
+        description=(
+            "Dominio público (origen) de la instalación, p. ej. https://mi-dominio.com. "
+            "Se persiste en la configuración del sistema y habilita las mutaciones "
+            "autenticadas por cookie desde ese origen (guard CSRF). El asistente lo "
+            "propone desde la URL actual; verifícalo antes de enviar."
+        ),
+    )
     public_registration_enabled: bool = Field(
         default=False,
         description="Permitir el auto-registro público desde el primer momento.",
@@ -94,6 +105,35 @@ class BootstrapInitializeRequest(ApiWriteSchema):
         min_length=1,
         max_length=200,
         description="Nombre de la institución (opcional).",
+    )
+    @field_validator("app_base_url")
+    def validate_app_base_url(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
+        normalized = normalize_base_url(value)
+        if normalized is None:
+            raise ValueError(
+                "Debe ser un origen http(s) sin ruta ni credenciales, p. ej. https://mi-dominio.com"
+            )
+        return normalized
+
+    customer_session_days: int | None = Field(
+        default=None,
+        ge=1,
+        le=365,
+        description=(
+            "Días de sesión del cliente (sin roles). Vacío = default del "
+            "despliegue. Editable después en Configuración del sistema."
+        ),
+    )
+    staff_session_minutes: int | None = Field(
+        default=None,
+        ge=5,
+        le=1440,
+        description=(
+            "Minutos de sesión del personal (con roles). Vacío = default del "
+            "despliegue. Editable después en Configuración del sistema."
+        ),
     )
 
 

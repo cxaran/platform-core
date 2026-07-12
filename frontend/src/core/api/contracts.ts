@@ -55,9 +55,16 @@ export type WidgetType = components["schemas"]["WidgetType"];
 export type FilterOperator = components["schemas"]["FilterOperator"];
 export type HttpMethod = components["schemas"]["HttpMethod"];
 
-// Respuesta del catálogo derivada de la operación real (no se reescribe el array a mano).
-export type ResourceCatalog =
+// Respuesta del catálogo derivada de la operación real (no se reescribe a mano).
+// El endpoint devuelve un envelope {resources, navigation_modules}; ``ResourceCatalog``
+// sigue siendo la LISTA de recursos tabulares (los consumidores la iteran tal cual).
+export type ResourceCatalogResponse =
   operations["list_resources_api_v1_resources_get"]["responses"][200]["content"]["application/json"];
+export type ResourceCatalog = ResourceCatalogResponse["resources"];
+// Módulo ESPECIALIZADO navegable (pantalla propia): el frontend solo enlaza su
+// href según section ("admin" | "panel"); la proyección por permisos ya la hizo
+// el backend al construir el catálogo. En la base el registro viene vacío.
+export type NavigationModule = components["schemas"]["NavigationModule"];
 
 // Catálogo agrupado de permisos: fuente de la vista grouped_catalog y de las
 // opciones del editor de permisos de roles.

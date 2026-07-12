@@ -6,10 +6,12 @@ levanta worker ni scheduler). La cola vive en PostgreSQL (canal/tabla dedicados 
 broker), sin Redis ni Celery, y reutiliza el ``postgres_dsn`` existente (el broker usa
 psycopg v3; el resto del backend sigue en psycopg2).
 
-Única tarea registrada: ``backups.tick`` (ver ``backend/app/jobs/tasks/backups.py``) —
-un cron FIJO por minuto en UTC que sólo consulta trabajo vencido en PostgreSQL. El
+Tareas registradas: ``backups.tick`` (ver ``backend/app/jobs/tasks/backups.py``) —
+un cron FIJO por minuto en UTC que sólo consulta trabajo vencido en PostgreSQL (el
 horario REAL de los respaldos vive en la tabla ``backup_settings``, no aquí: cambiar
-la hora, la zona o la retención no requiere reiniciar el scheduler.
+la hora, la zona o la retención no requiere reiniciar el scheduler) — y
+``notifications.tick`` (ver ``backend/app/jobs/tasks/notifications.py``) — red de
+seguridad por minuto que despacha correos y pushes pendientes de la cola.
 
 Ejecución (ver compose, profile "taskiq"):
     taskiq worker backend.app.taskiq_app:broker --workers 1 --max-async-tasks 1
@@ -60,3 +62,4 @@ scheduler = TaskiqScheduler(
 # Registro EXPLÍCITO de tareas (imports al final: las tareas importan ``broker`` de
 # este módulo, ya definido en este punto). El scheduler ve sus labels vía el broker.
 from backend.app.jobs.tasks import backups as _backups_tasks  # noqa: E402,F401
+from backend.app.jobs.tasks import notifications as _notifications_tasks  # noqa: E402,F401

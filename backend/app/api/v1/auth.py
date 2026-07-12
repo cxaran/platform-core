@@ -152,7 +152,12 @@ def verify_login(
         )
 
     clear_challenge_cookie(response)
-    set_session_cookie(response, create_access_token(str(user.id), user.token))
+    from backend.app.auth.auth import session_ttl_for_user
+
+    set_session_cookie(
+        response,
+        create_access_token(str(user.id), user.token, ttl=session_ttl_for_user(session, user)),
+    )
     return LoginResponse(message="Sesión iniciada correctamente")
 
 
@@ -224,7 +229,12 @@ async def google_login_callback(
         return failure
 
     success = RedirectResponse(f"{base}/", status_code=status.HTTP_302_FOUND)
-    set_session_cookie(success, create_access_token(str(user.id), user.token))
+    from backend.app.auth.auth import session_ttl_for_user
+
+    set_session_cookie(
+        success,
+        create_access_token(str(user.id), user.token, ttl=session_ttl_for_user(session, user)),
+    )
     return success
 
 

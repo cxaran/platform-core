@@ -7,7 +7,13 @@ from collections.abc import Generator
 
 from .settings import settings
 
-engine = create_engine(str(settings.postgres_dsn))
+# H7: la convención del dominio es naive-UTC (utils/utc_now). Fijar la sesión
+# de PostgreSQL en UTC hace esa convención correcta sin importar el TZ del
+# servidor: los timestamptz se escriben y leen como UTC siempre.
+engine = create_engine(
+    str(settings.postgres_dsn),
+    connect_args={"options": "-c timezone=utc"},
+)
 
 def get_db() -> Generator[Session, None, None]:
     with Session(engine) as session:
