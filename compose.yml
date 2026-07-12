@@ -21,6 +21,28 @@ services:
     logging: *default-logging
     restart: unless-stopped
 
+  # PostgreSQL LOCAL opcional (profile "db"): para el despliegue autocontenido en un
+  # VPS. El instalador lo activa vía COMPOSE_PROFILES en el .env; con base de datos
+  # externa este servicio simplemente no existe (los depends_on son required:false).
+  postgres:
+    image: postgres:16-alpine
+    profiles: [ "db" ]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-platform}
+      # El instalador SIEMPRE genera esta contraseña al elegir el contenedor local
+      # (default vacío solo para que compose interpole con el profile inactivo).
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+      POSTGRES_DB: ${POSTGRES_DB:-platform_core}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *default-logging
+    restart: unless-stopped
+
   backend:
     build:
       context: ./backend
@@ -39,6 +61,10 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      # Solo aplica con el profile "db" activo (PostgreSQL local del instalador).
+      postgres:
+        condition: service_healthy
+        required: false
     logging: *default-logging
     restart: unless-stopped
 
@@ -110,6 +136,26 @@ services:
     logging: *default-logging
     restart: unless-stopped
 
+  # TLS automático opcional (profile "tls"): Caddy delante de nginx obtiene y renueva
+  # los certificados de Let's Encrypt para el dominio del Caddyfile (lo genera el
+  # instalador). Con este profile activo, nginx queda en loopback (HTTP_PORT del .env)
+  # y Caddy publica 80/443.
+  caddy:
+    image: caddy:2-alpine
+    profiles: [ "tls" ]
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      nginx:
+        condition: service_started
+    logging: *default-logging
+    restart: unless-stopped
+
   nginx:
     image: nginx:1.27-alpine
     ports:
@@ -135,6 +181,10 @@ services:
     profiles: [ "migrate" ]
     env_file: ${APP_ENV_FILE:-.env}
     command: [ "alembic", "-c", "backend/alembic.ini", "upgrade", "head" ]
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
     # La imagen trae healthcheck de la API; este contenedor no la sirve.
     healthcheck:
       disable: true
@@ -148,6 +198,10 @@ services:
     profiles: [ "taskiq" ]
     env_file: ${APP_ENV_FILE:-.env}
     command: [ "taskiq", "worker", "backend.app.taskiq_app:broker", "--workers", "1", "--max-async-tasks", "1" ]
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
     # El primer arranque puede chocar con el scheduler creando la tabla del broker a la
     # vez (UniqueViolation en pg_type); el reinicio lo absorbe.
     healthcheck:
@@ -160,6 +214,10 @@ services:
     profiles: [ "taskiq" ]
     env_file: ${APP_ENV_FILE:-.env}
     command: [ "taskiq", "scheduler", "backend.app.taskiq_app:scheduler", "--skip-first-run" ]
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
     healthcheck:
       disable: true
     logging: *default-logging
@@ -167,3 +225,6 @@ services:
 
 volumes:
   redis_data:
+  postgres_data:
+  caddy_data:
+  caddy_config:
