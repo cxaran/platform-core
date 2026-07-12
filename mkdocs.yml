@@ -1,0 +1,66 @@
+# Sitio de documentación (MkDocs Material) servido bajo /docs vía nginx.
+# El servicio `docs` de compose corre `mkdocs serve`: vigila docs/ y este
+# archivo, y reconstruye en automático al guardar cambios.
+#
+# El nombre y el logo de la instalación NO viven aquí: docs/assets/branding.js
+# los consulta en runtime a la API pública (/api/v1/public/branding)
+# aprovechando que nginx sirve docs y API en el mismo origen.
+
+site_name: Documentación
+site_description: Documentación de la plataforma, organizada por audiencia.
+# Solo importa la RUTA (/docs/): desde MkDocs 1.5 el dev server sirve el sitio
+# bajo el sub-path de site_url, que es lo que nginx proxya. El host es un
+# placeholder — el dominio real se declara en el bootstrap y no se conoce aquí.
+site_url: http://localhost/docs/
+
+docs_dir: docs
+site_dir: site
+
+theme:
+  name: material
+  language: es
+  # El icono es solo el arranque: branding.js lo reemplaza por el logo real
+  # de la instalación cuando la API responde.
+  icon:
+    logo: material/book-open-variant
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: black
+      toggle:
+        icon: material/weather-night
+        name: Cambiar a tema oscuro
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      toggle:
+        icon: material/weather-sunny
+        name: Cambiar a tema claro
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - search.highlight
+
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true
+  - pymdownx.superfences
+
+extra_javascript:
+  - assets/branding.js
+
+# Los documentos internos de arquitectura (docs/architecture/) quedan FUERA del
+# nav a propósito: son material de trabajo para desarrollo, no documentación de
+# la instalación. Siguen accesibles por URL directa.
+nav:
+  - Inicio: README.md
+  - Operación:
+      - Instalación: operacion/instalacion.md
+      - Respaldos: operacion/respaldos.md
+  - Producto:
+      - Puesta en marcha: producto/puesta-en-marcha.md
+  - Desarrollo:
+      - Arquitectura: desarrollo/arquitectura.md
+      - Tareas en segundo plano: desarrollo/tareas-en-segundo-plano.md

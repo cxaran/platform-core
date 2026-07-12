@@ -193,6 +193,20 @@ services:
       - frontend_node_modules:/app/node_modules
       - frontend_next:/app/.next
 
+  # Documentación (MkDocs Material) bajo /docs del nginx dev; también publicada
+  # directo en http://localhost:${DOCS_PORT:-8030}/docs/ para previsualizar.
+  docs:
+    image: squidfunk/mkdocs-material:9
+    # --livereload EXPLÍCITO: con click >= 8.2 el default del flag en mkdocs 1.6
+    # queda falsy y `serve` deja de vigilar archivos (sin él no hay rebuild).
+    command: [ "serve", "--livereload", "--dev-addr=0.0.0.0:8000" ]
+    volumes:
+      - ./mkdocs.yml:/docs/mkdocs.yml:ro
+      - ./docs:/docs/docs:ro
+    ports:
+      - "${DOCS_PORT:-8030}:8000"
+    restart: unless-stopped
+
   # Entrada nginx dev en UN solo origen (http://localhost:8080): necesaria para el
   # COPILOTO (cookie del gateway + WebSocket same-origin, el gateway no habla CORS).
   # El resto de la app sigue accesible directo en http://localhost:3000.
@@ -206,6 +220,7 @@ services:
       - frontend
       - backend
       - model-gateway
+      - docs
     restart: unless-stopped
 
 volumes:

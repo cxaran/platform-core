@@ -18,3 +18,6 @@ __pycache__/
 
 # Build del model-gateway (artefacto de tsup)
 /model-gateway/dist/
+
+# Build local de MkDocs (el servicio docs sirve en caliente; site/ es artefacto)
+/site/
