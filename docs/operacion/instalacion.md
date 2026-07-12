@@ -88,11 +88,9 @@ rotan sus logs.
 ## Actualización
 
 ```bash
-git pull
-docker compose build
-docker compose --profile migrate run --rm migrate
-docker compose up -d
+./scripts/update.sh
 ```
 
-Consejo: descarga un respaldo (o encola uno manual) antes de actualizar. La
-documentación de `/docs` se actualiza sola con el `git pull`.
+Respaldo pre-update, pull del código, imágenes del CI, migraciones en una
+ventana breve, verificación e higiene de disco — ver
+[actualización](actualizacion.md).

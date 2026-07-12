@@ -64,8 +64,15 @@ orchestrate() {
   profiles="$(grep -E '^COMPOSE_PROFILES=' .env | cut -d= -f2- || true)"
 
   echo
-  echo "→ [1/5] Construyendo imágenes (la primera vez tarda varios minutos)…"
-  docker compose build
+  echo "→ [1/5] Obteniendo imágenes…"
+  # Primero las publicadas por CI en GHCR (rápido, sin carga en el servidor);
+  # si no están disponibles (sin red al registry, fork sin CI), se construyen aquí.
+  if docker compose pull backend frontend model-gateway 2>/dev/null; then
+    echo "   ✔ Imágenes descargadas de GHCR."
+  else
+    echo "   GHCR no disponible: construyendo localmente (tarda varios minutos)…"
+    docker compose build
+  fi
 
   if [[ ",$profiles," == *",db,"* ]]; then
     echo "→ [2/5] Levantando PostgreSQL local…"

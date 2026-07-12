@@ -47,7 +47,7 @@ services:
     build:
       context: ./backend
       target: prod
-    image: platform-core-backend:prod
+    image: ghcr.io/cxaran/platform-core-backend:${IMAGE_TAG:-latest}
     # El archivo de entorno debe definir TRUSTED_BROWSER_ORIGINS con los orígenes
     # HTTPS públicos confiables; en producción la app falla al iniciar si está vacío.
     env_file: ${APP_ENV_FILE:-.env}
@@ -72,7 +72,7 @@ services:
     build:
       context: ./frontend
       target: prod
-    image: platform-core-frontend:prod
+    image: ghcr.io/cxaran/platform-core-frontend:${IMAGE_TAG:-latest}
     expose:
       - "3000"
     healthcheck:
@@ -98,7 +98,7 @@ services:
     build:
       context: ./model-gateway
       target: runtime
-    image: platform-core-gateway:prod
+    image: ghcr.io/cxaran/platform-core-model-gateway:${IMAGE_TAG:-latest}
     env_file: ${APP_ENV_FILE:-.env}
     environment:
       NODE_ENV: production
@@ -161,7 +161,7 @@ services:
     restart: unless-stopped
 
   migrate:
-    image: platform-core-backend:prod
+    image: ghcr.io/cxaran/platform-core-backend:${IMAGE_TAG:-latest}
     profiles: [ "migrate" ]
     env_file: ${APP_ENV_FILE:-.env}
     command: [ "alembic", "-c", "backend/alembic.ini", "upgrade", "head" ]
@@ -178,7 +178,7 @@ services:
   # PROPIOS con profile explícito "taskiq"; `docker compose up` normal no los levanta.
   # UNA sola réplica del scheduler.
   taskiq-worker:
-    image: platform-core-backend:prod
+    image: ghcr.io/cxaran/platform-core-backend:${IMAGE_TAG:-latest}
     profiles: [ "taskiq" ]
     env_file: ${APP_ENV_FILE:-.env}
     command: [ "taskiq", "worker", "backend.app.taskiq_app:broker", "--workers", "1", "--max-async-tasks", "1" ]
@@ -194,7 +194,7 @@ services:
     restart: unless-stopped
 
   taskiq-scheduler:
-    image: platform-core-backend:prod
+    image: ghcr.io/cxaran/platform-core-backend:${IMAGE_TAG:-latest}
     profiles: [ "taskiq" ]
     env_file: ${APP_ENV_FILE:-.env}
     command: [ "taskiq", "scheduler", "backend.app.taskiq_app:scheduler", "--skip-first-run" ]

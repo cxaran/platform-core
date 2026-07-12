@@ -1,0 +1,176 @@
+# CI/CD de Platform Core.
+#
+# En cada PR y push a main corren las TRES suites canónicas (las mismas que se
+# ejecutan localmente). El backend usa un PostgreSQL real de servicio, así que
+# también corren los tests específicos de Postgres que localmente quedan en skip.
+#
+# Solo en push a main, y SOLO con las tres suites en verde, se construyen y
+# publican las imágenes de producción en GHCR con dos tags: `latest` y
+# `sha-<corto>` (el que consume scripts/update.sh para desplegar y hacer rollback).
+
+name: ci
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+env:
+  # Mismo entorno mínimo que usan las suites locales (valores de prueba).
+  ENVIRONMENT: local
+  SECRET_KEY: ci-secret-key-ci-secret-key
+  ALGORITHM: HS256
+  ACCESS_TOKEN_EXPIRE_MINUTES: "30"
+  EMAIL_TOKEN_EXPIRE_MINUTES: "30"
+  TRYS_BEFORE_LOCK: "5"
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+  SMTP_HOST: mailpit
+  SMTP_PORT: "1025"
+  SMTP_USER: ci@example.com
+  SMTP_PASSWORD: ci-password
+  SMTP_FROM_EMAIL: ci@example.com
+  SMTP_FROM_NAME: Platform Core CI
+  SMTP_TLS: "false"
+  SMTP_SSL: "false"
+  SMTP_USE_CREDENTIALS: "false"
+  POSTGRES_USER: platform
+  POSTGRES_PASSWORD: platform
+  POSTGRES_SERVER: 127.0.0.1
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: platform_core
+  AGENT_GATEWAY_TICKET_SIGNING_SECRET: ci-agent-ticket-secret
+  AGENT_GATEWAY_INTERNAL_SECRET: ci-internal-secret
+
+jobs:
+  backend:
+    name: backend (suite canónica + Postgres real)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: platform
+          POSTGRES_PASSWORD: platform
+          POSTGRES_DB: platform_core_test
+        ports: [ "5432:5432" ]
+        options: >-
+          --health-cmd "pg_isready -U platform -d platform_core_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r backend/requirements.txt
+      - name: Suite canónica (incluye los tests de Postgres)
+        env:
+          # Clave Fernet DE CI (no protege nada real; los tests cifran material efímero).
+          APP_ENCRYPTION_KEY: pXypBPyargFj7tY5HHo2PE3-fFwNDTdPNi1OdZz7GDw=
+          TEST_POSTGRES_URL: postgresql+psycopg2://platform:platform@127.0.0.1:5432/platform_core_test
+          PYTHONPATH: ${{ github.workspace }}
+        run: python -m backend.tests.canonical_suite
+
+  gateway:
+    name: model-gateway (typecheck + vitest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: model-gateway
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: model-gateway/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  frontend:
+    name: frontend (check:api + lint + typecheck + tests + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: npm ci
+      # check:api sin levantar el stack: se exporta el OpenAPI del app importado
+      # y se sirve estático (la generación de tipos solo necesita el JSON).
+      - name: Exportar OpenAPI del backend
+        working-directory: .
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          pip install -r backend/requirements.txt
+          python -c "import json; from backend.app.main import app; open('/tmp/openapi.json','w').write(json.dumps(app.openapi()))"
+          (cd /tmp && python -m http.server 8000 &) && sleep 1
+      - name: check:api (drift de tipos generados)
+        env:
+          OPENAPI_URL: http://127.0.0.1:8000/openapi.json
+        run: npm run check:api
+      - run: npm run lint
+      - run: npm run typecheck
+      - name: Suites de frontend
+        run: |
+          npm run test:bootstrap && npm run test:actions && npm run test:public-auth
+          npm run test:filters && npm run test:push && npm run test:list-query
+          npm run test:detail-view && npm run test:resource-form && npm run test:export-rows
+          npm run test:checklist && npm run test:backups && npm run test:agent
+      - run: npm run build
+
+  publish:
+    name: publicar imágenes en GHCR
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [ backend, gateway, frontend ]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - name: backend
+            context: ./backend
+            target: prod
+          - name: frontend
+            context: ./frontend
+            target: prod
+          - name: model-gateway
+            context: ./model-gateway
+            target: runtime
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Tag corto del commit
+        run: echo "SHORT_SHA=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_ENV"
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          target: ${{ matrix.target }}
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/platform-core-${{ matrix.name }}:latest
+            ghcr.io/${{ github.repository_owner }}/platform-core-${{ matrix.name }}:sha-${{ env.SHORT_SHA }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,scope=${{ matrix.name }},mode=max

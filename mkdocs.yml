@@ -58,6 +58,7 @@ nav:
   - Inicio: README.md
   - Operación:
       - Instalación: operacion/instalacion.md
+      - Actualización: operacion/actualizacion.md
       - Respaldos: operacion/respaldos.md
       - Observabilidad: operacion/observabilidad.md
       - Solución de problemas: operacion/solucion-problemas.md

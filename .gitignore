@@ -21,3 +21,6 @@ __pycache__/
 
 # Build local de MkDocs (el servicio docs sirve en caliente; site/ es artefacto)
 /site/
+
+# Dumps locales pre-update (rotados por scripts/update.sh; jamás al repo)
+/backups-preupdate/
