@@ -261,7 +261,6 @@ class PushRoutesTest(unittest.TestCase):
         with patch.multiple(
             secret_cipher.settings,
             app_encryption_key=None,
-            backup_token_encryption_key=None,
         ):
             response = self.client.get("/api/v1/notifications/push/public-key")
         self.assertEqual(response.status_code, 503, response.text)

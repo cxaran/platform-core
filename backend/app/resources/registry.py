@@ -18,6 +18,7 @@ from backend.app.models.backup import BackupRun, BackupSettings
 from backend.app.models.system_settings import SystemSettings
 from backend.app.models.user import Role, User
 from backend.app.query import QueryOptions, ResourceQuery
+from backend.app.query.count_strategies import NoTotalCount
 from backend.app.query.operators import Operator
 
 # Operadores de texto visibles compartidos por los campos de nombre/correo de los
@@ -34,6 +35,13 @@ _CREATED_AT_OPERATORS = (
     Operator.ON,
     Operator.BEFORE,
     Operator.AFTER,
+    Operator.BETWEEN,
+)
+# Operadores de comparación numérica: estrictos (mayor/menor que) y rango inclusivo
+# (``between`` numérico, extremos directos). Para columnas int como tamaño e intentos.
+_NUMERIC_RANGE_OPERATORS = (
+    Operator.GT,
+    Operator.LT,
     Operator.BETWEEN,
 )
 from backend.app.schemas.capabilities import (
@@ -78,14 +86,15 @@ USERS = ResourceQuery(
     model=User,
     schema=UserAdminListItem,
     options=QueryOptions(
-        filter_fields=("is_active", "email", "name"),
-        sort_fields=("created_at", "name", "email"),
-        search_fields=("name", "email"),
+        filter_fields=("is_active", "email", "name", "last_name"),
+        sort_fields=("created_at", "name", "last_name", "email"),
+        search_fields=("name", "last_name", "email"),
         # ``id`` para selección relacional; el resto habilita el autofiltro por
         # valores (checklist estilo Excel) de las columnas visibles.
-        in_fields=("id", "name", "email", "is_active"),
+        in_fields=("id", "name", "last_name", "email", "is_active"),
         field_operators={
             "name": _TEXT_FILTER_OPERATORS,
+            "last_name": _TEXT_FILTER_OPERATORS,
             "email": _TEXT_FILTER_OPERATORS,
             "created_at": _CREATED_AT_OPERATORS,
         },
@@ -112,12 +121,14 @@ ROLES = ResourceQuery(
     schema=RoleListItem,
     options=QueryOptions(
         filter_fields=("is_active", "name"),
-        sort_fields=("created_at", "name"),
-        search_fields=("name",),
+        sort_fields=("created_at", "updated_at", "name"),
+        search_fields=("name", "description"),
         in_fields=("id", "name", "is_active"),
         field_operators={
             "name": _TEXT_FILTER_OPERATORS,
+            "description": (Operator.CONTAINS,),
             "created_at": _CREATED_AT_OPERATORS,
+            "updated_at": _CREATED_AT_OPERATORS,
         },
         default_sort="name",
     ),
@@ -141,12 +152,28 @@ BACKUP_RUNS = ResourceQuery(
     model=BackupRun,
     schema=BackupRunListItem,
     options=QueryOptions(
-        # Historial operativo: filtro por estado (enum no nativo, igualdad) y rango de
-        # calendario sobre created_at. Sin búsqueda libre (metadata, no texto).
-        filter_fields=("status", "trigger_kind"),
-        field_operators={"created_at": _CREATED_AT_OPERATORS},
-        sort_fields=("created_at", "finished_at", "file_size_bytes"),
-        in_fields=("id", "status", "trigger_kind"),
+        # Historial operativo: filtros de diagnóstico — estado/origen/errores por
+        # igualdad y autofiltro, fechas de calendario en todo el ciclo de vida
+        # (creado/programado/iniciado). Sin búsqueda libre (metadata, no texto).
+        filter_fields=("status", "trigger_kind", "error_code", "explorer_status"),
+        field_operators={
+            "created_at": _CREATED_AT_OPERATORS,
+            "scheduled_for": _CREATED_AT_OPERATORS,
+            "started_at": _CREATED_AT_OPERATORS,
+            # Comparación numérica: tamaño del respaldo e intentos (mayor/menor/entre).
+            "file_size_bytes": _NUMERIC_RANGE_OPERATORS,
+            "attempt_count": _NUMERIC_RANGE_OPERATORS,
+            # Diagnóstico por exclusión: "estados distintos de..." (complemento de ``in``).
+            "status": (Operator.NOT_IN,),
+        },
+        sort_fields=(
+            "created_at",
+            "started_at",
+            "finished_at",
+            "file_size_bytes",
+            "attempt_count",
+        ),
+        in_fields=("id", "status", "trigger_kind", "error_code", "explorer_status"),
         default_sort="-created_at",
     ),
 )
@@ -174,11 +201,17 @@ AUDIT_EVENTS = ResourceQuery(
         # ``occurred_at`` (DateTime) admite rango de calendario. Orden por fecha
         # descendente por defecto. Sin búsqueda libre (la bitácora no es texto).
         filter_fields=("actor_user_id", "action", "entity_type", "entity_id"),
-        field_operators={"occurred_at": _CREATED_AT_OPERATORS},
+        field_operators={
+            "occurred_at": _CREATED_AT_OPERATORS,
+            "reason": (Operator.CONTAINS,),
+        },
         sort_fields=("occurred_at",),
         in_fields=("id", "action", "entity_type", "actor_user_id"),
         default_sort="-occurred_at",
     ),
+    # Feed append-only que crece sin límite: se pagina sin ``COUNT(*)`` por página
+    # (prev/next, sin total). Evita contar toda la bitácora en cada consulta.
+    count_strategy=NoTotalCount(),
 )
 
 

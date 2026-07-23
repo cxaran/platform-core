@@ -406,7 +406,7 @@ class ExplorerSnapshotService:
                     )
 
                 # Tabla de datos: __mp_record_key + una columna posicional por columna
-                # visible. Los datos clínicos van aquí, nunca en las tablas __mp_*.
+                # visible. Los datos del dominio van aquí, nunca en las tablas __mp_*.
                 column_defs = ", ".join(
                     f"{sqlite_column_name(c.ordinal)} TEXT" for c in visible
                 )

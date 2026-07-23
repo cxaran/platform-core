@@ -26,8 +26,10 @@ class AuditEventRead(ApiReadSchema):
 class AuditEventListItem(ApiReadSchema):
     """Versión de listado compatible con ``ResourceQuery``.
 
-    Sólo campos factuales de la bitácora. ``changed_fields`` no se proyecta en el
-    listado (puede ser voluminoso y contener detalle sensible); se ve en el detalle.
+    Campos factuales de la bitácora. ``changed_fields`` viaja pero NO es columna
+    de la tabla (sin ``ui.list``): se muestra en el detalle del evento. Su
+    contenido es seguro por contrato de escritura (nombres de campos e ids
+    no-secretos; nunca valores sensibles).
     """
 
     id: uuid.UUID
@@ -43,3 +45,6 @@ class AuditEventListItem(ApiReadSchema):
         default=None, title="Usuario", json_schema_extra={"ui": {"list": True}}
     )
     reason: Optional[str] = Field(default=None, title="Motivo")
+    changed_fields: Optional[dict[str, Any]] = Field(
+        default=None, title="Campos modificados"
+    )

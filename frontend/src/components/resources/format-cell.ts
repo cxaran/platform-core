@@ -90,6 +90,11 @@ export function formatCell(value: unknown, type: FieldValueType): string {
       return formatDateTime(value);
     case "array":
       return formatArray(value);
+    case "json":
+      // Resumen para la celda; el JSON completo se ve en el detalle.
+      return value && typeof value === "object"
+        ? `${Object.keys(value as Record<string, unknown>).length} campo(s)`
+        : DASH;
     case "string":
     case "email":
     case "uuid":

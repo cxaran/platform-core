@@ -343,12 +343,10 @@ DRIVE_CALLBACK_PATH = "/api/v1/backups/google-drive/callback"
 def resolve_drive_redirect_uri(session: Session) -> Optional[str]:
     """Redirect URI del OAuth de Drive: DERIVADO del dominio base verificado
     (``system_settings.app_base_url``); ``None`` mientras no haya dominio."""
-    from backend.app.services.system_settings_service import get_system_settings
+    from backend.app.services.system_settings_service import verified_installation_base_url
 
-    system = get_system_settings(session)
-    if system.app_base_url and system.app_base_url_verified_at is not None:
-        return system.app_base_url.rstrip("/") + DRIVE_CALLBACK_PATH
-    return None
+    base = verified_installation_base_url(session)
+    return base + DRIVE_CALLBACK_PATH if base else None
 
 
 def resolve_drive_oauth(session: Session) -> tuple[str, str, str]:

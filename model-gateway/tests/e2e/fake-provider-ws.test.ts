@@ -13,7 +13,6 @@ const baseSettings: GatewaySettings = {
   publicPathPrefix: "/model-gateway",
   enableRootPathAlias: true,
   cookieName: "mg_session",
-  allowedOrigins: ["http://localhost:3000"],
   globalMaxContextTokens: 128000,
   safetyReserveTokens: 1024,
   maxWebSocketMessageBytes: 1024 * 1024,
@@ -164,19 +163,38 @@ describe("fake provider websocket flow", () => {
     expect(close).toEqual({ code: 1008, reason: "Gateway session required" });
   });
 
-  it("rejects websocket connections from an arbitrary origin", async () => {
+  it("rejects websocket handshakes the browser declares cross-site", async () => {
     const setup = await createTestApp();
     app = setup.app;
 
     const close = await new Promise<{ code: number; reason: string }>((resolve, reject) => {
       const ws = new WebSocket(`ws://127.0.0.1:${setup.port}/model-gateway/v1/ws`, {
-        headers: { Cookie: setup.cookie, Origin: "http://evil.example" }
+        headers: { Cookie: setup.cookie, "Sec-Fetch-Site": "cross-site" }
       });
       ws.on("close", (code, reason) => resolve({ code, reason: reason.toString() }));
       ws.on("error", reject);
     });
 
-    expect(close).toEqual({ code: 1008, reason: "Origin not allowed" });
+    expect(close).toEqual({ code: 1008, reason: "Cross-site request rejected" });
+  });
+
+  it("accepts same-origin websocket handshakes (fetch metadata)", async () => {
+    const setup = await createTestApp();
+    app = setup.app;
+
+    const opened = await new Promise<boolean>((resolve, reject) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${setup.port}/model-gateway/v1/ws`, {
+        headers: { Cookie: setup.cookie, "Sec-Fetch-Site": "same-origin" }
+      });
+      ws.on("open", () => {
+        ws.close();
+        resolve(true);
+      });
+      ws.on("close", (code) => resolve(code !== 1008));
+      ws.on("error", reject);
+    });
+
+    expect(opened).toBe(true);
   });
 
   it("rejects tool_result payloads above the configured size limit", async () => {

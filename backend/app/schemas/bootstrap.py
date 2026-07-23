@@ -1,10 +1,9 @@
-from pydantic import EmailStr, Field, SecretStr, field_validator, model_validator
-from typing_extensions import Self
+from pydantic import EmailStr, Field, SecretStr, field_validator
 
 from backend.app.bootstrap.service import MAX_ADDITIONAL_ROLES
-from backend.app.core.runtime_origins import normalize_base_url
+from backend.app.utils.base_url import normalize_base_url
 from backend.app.schemas.base import ApiReadSchema, ApiWriteSchema
-from backend.app.schemas.user import validate_password
+from backend.app.schemas.user import PasswordConfirmMixin, PersonNameMixin
 
 
 class BootstrapStatusRead(ApiReadSchema):
@@ -33,28 +32,12 @@ class BootstrapCatalogRead(ApiReadSchema):
     limits: BootstrapLimitsRead
 
 
-class BootstrapInitialUser(ApiWriteSchema):
+class BootstrapInitialUser(PersonNameMixin, PasswordConfirmMixin, ApiWriteSchema):
     name: str = Field(min_length=4, max_length=50)
     last_name: str = Field(min_length=4, max_length=50)
     email: EmailStr
     password: SecretStr = Field(..., min_length=8, max_length=128)
     confirm_password: SecretStr = Field(..., min_length=8, max_length=128)
-
-    @field_validator("name", "last_name")
-    def names_not_empty(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("El nombre y apellido no pueden estar vacíos")
-        return value
-
-    @field_validator("password")
-    def password_validator(cls, value: SecretStr) -> SecretStr:
-        return validate_password(value)
-
-    @model_validator(mode="after")
-    def check_passwords_match(self) -> Self:
-        if self.password != self.confirm_password:
-            raise ValueError("Las contraseñas no coinciden")
-        return self
 
 
 class BootstrapSystemAdminRole(ApiWriteSchema):
@@ -87,8 +70,8 @@ class BootstrapInitializeRequest(ApiWriteSchema):
         max_length=200,
         description=(
             "Dominio público (origen) de la instalación, p. ej. https://mi-dominio.com. "
-            "Se persiste en la configuración del sistema y habilita las mutaciones "
-            "autenticadas por cookie desde ese origen (guard CSRF). El asistente lo "
+            "Se persiste en la configuración del sistema y se usa para construir URLs "
+            "absolutas (enlaces de correo, redirect URIs de OAuth). El asistente lo "
             "propone desde la URL actual; verifícalo antes de enviar."
         ),
     )
@@ -117,24 +100,6 @@ class BootstrapInitializeRequest(ApiWriteSchema):
             )
         return normalized
 
-    customer_session_days: int | None = Field(
-        default=None,
-        ge=1,
-        le=365,
-        description=(
-            "Días de sesión del cliente (sin roles). Vacío = default del "
-            "despliegue. Editable después en Configuración del sistema."
-        ),
-    )
-    staff_session_minutes: int | None = Field(
-        default=None,
-        ge=5,
-        le=1440,
-        description=(
-            "Minutos de sesión del personal (con roles). Vacío = default del "
-            "despliegue. Editable después en Configuración del sistema."
-        ),
-    )
 
 
 class BootstrapInitializeRead(ApiReadSchema):

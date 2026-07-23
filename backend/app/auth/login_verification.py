@@ -24,7 +24,6 @@ import hashlib
 import hmac
 import logging
 import secrets
-from dataclasses import dataclass
 from typing import Optional, cast
 
 from fastapi import Request, Response
@@ -43,17 +42,9 @@ _ATTEMPTS_PREFIX = "login-verify-attempts"
 # usuario debe iniciar sesión de nuevo (el lockout de contraseña sigue aparte).
 MAX_VERIFY_ATTEMPTS = 5
 
-MODE_DISABLED = "disabled"
 MODE_CODE = "code"
 MODE_LINK = "link"
 
-
-@dataclass(frozen=True)
-class LoginChallenge:
-    """Reto pendiente creado tras validar credenciales (aún sin sesión)."""
-
-    challenge_id: str
-    mode: str
 
 
 def _ttl_seconds(minutes: int | None = None) -> int:
@@ -130,23 +121,14 @@ def user_requires_verification(session: Session, user: User, mode: str) -> bool:
     return not user_has_full_admin_coverage(session, user.id)
 
 
-def verification_base_url(session: Session, request: Request) -> str:
-    """Origen para construir el enlace de verificación.
+def verification_base_url(session: Session) -> str:
+    """Origen del enlace de verificación: la URL de la instalación declarada por
+    el administrador. Nunca se deriva de headers de la solicitud (el enlace viaja
+    por correo y solo puede apuntar al dominio del operador). Sin URL declarada
+    queda vacío y el correo degrada al modo código."""
+    from backend.app.services.system_settings_service import installation_base_url
 
-    Prefiere el dominio VERIFICADO de la instalación; cae al Origin de la
-    solicitud (que ya pasó el guard CSRF de mutaciones por cookie) y, en última
-    instancia, al primer origen confiable configurado.
-    """
-    from backend.app.services.system_settings_service import get_system_settings
-
-    row = get_system_settings(session)
-    if row.app_base_url and row.app_base_url_verified_at:
-        return row.app_base_url.rstrip("/")
-    origin = (request.headers.get("origin") or "").rstrip("/")
-    if origin:
-        return origin
-    first = sorted(settings.trusted_origins)
-    return first[0] if first else ""
+    return installation_base_url(session) or ""
 
 
 async def start_login_challenge(
@@ -154,7 +136,6 @@ async def start_login_challenge(
     user: User,
     mode: str,
     response: Response,
-    request: Request,
 ) -> bool:
     """Crea el reto, envía el correo y liga la cookie de navegador.
 
@@ -181,7 +162,7 @@ async def start_login_challenge(
             "intentaste iniciar sesión, ignora este correo."
         )
     else:
-        link = f"{verification_base_url(session, request)}/login/verify?token={secret}"
+        link = f"{verification_base_url(session)}/login/verify?token={secret}"
         subject = f"{display_name}: enlace de inicio de sesión"
         message = (
             f"Hola {user.name}, confirma tu inicio de sesión abriendo este enlace "

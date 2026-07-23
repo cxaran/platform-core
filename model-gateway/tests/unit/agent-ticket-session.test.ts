@@ -16,7 +16,6 @@ const baseSettings: GatewaySettings = {
   publicPathPrefix: "/model-gateway",
   enableRootPathAlias: true,
   cookieName: "mg_session",
-  allowedOrigins: ["http://localhost:3000"],
   globalMaxContextTokens: 128000,
   safetyReserveTokens: 1024,
   maxWebSocketMessageBytes: 1024 * 1024,

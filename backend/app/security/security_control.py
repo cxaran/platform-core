@@ -5,8 +5,6 @@ from fastapi import Depends, HTTPException, status
 from backend.app.auth.auth_dependencies import CurrentUser
 
 
-WILDCARD_ACCESS = "*"
-
 
 class SecurityControl:
     """Clase que representa un permiso del sistema con dominio."""

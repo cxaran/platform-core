@@ -159,15 +159,21 @@ function buildOperatorControl(
     placeholder: operator.placeholder ?? undefined,
   };
 
-  if (operator.widget === "daterange") {
+  if (operator.widget === "daterange" || operator.widget === "numberrange") {
+    // Rango de dos parámetros: fechas (daterange) o números (numberrange). El
+    // validador de cada extremo depende del tipo: fecha ISO o texto (numérico).
     const params = operator.parameters;
     if (!params) {
       throw new FilterableContractError(
-        `El operador '${operator.key}' de '${fieldKey}' (daterange) no declara parameters.`,
+        `El operador '${operator.key}' de '${fieldKey}' (${operator.widget}) no declara parameters.`,
       );
     }
-    registerParameter(params.from, { kind: "date" }, fieldKey, paramNames, validators);
-    registerParameter(params.to, { kind: "date" }, fieldKey, paramNames, validators);
+    const bound: ParamValidator =
+      operator.widget === "daterange"
+        ? { kind: "date" }
+        : { kind: "text", maxLength: MAX_TEXT_FILTER_LENGTH };
+    registerParameter(params.from, bound, fieldKey, paramNames, validators);
+    registerParameter(params.to, bound, fieldKey, paramNames, validators);
     return { ...base, fromParameter: params.from, toParameter: params.to };
   }
 

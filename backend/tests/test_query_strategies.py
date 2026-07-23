@@ -18,6 +18,7 @@ from backend.app.query import (
     DistinctIdentityCount,
     IdentitySpec,
     ListQueryContract,
+    NoTotalCount,
     ProjectionSerializer,
     QueryOptions,
 )
@@ -106,6 +107,40 @@ class CountStrategyTest(unittest.TestCase):
             page = contract.paginate(session, contract.Query(sort="id"), stmt=self.base)  # type: ignore[arg-type]
         # COUNT(DISTINCT identidad) -> 2 padres únicos.
         self.assertEqual(page.pagination.total, 2)
+
+
+class NoTotalCountTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.engine = _engine()
+
+    def tearDown(self) -> None:
+        Base.metadata.drop_all(self.engine)
+
+    def _contract(self) -> ListQueryContract[ParentRead]:
+        return ListQueryContract(
+            name="Feed",
+            model=Parent,
+            schema=ParentRead,
+            options=_OPTIONS,
+            count_strategy=NoTotalCount(),
+        )
+
+    def test_no_total_omits_count_and_flags_next_page(self) -> None:
+        # 2 padres, limit=1: total None (no se cuenta) y hay página siguiente.
+        with Session(self.engine) as session:
+            page = self._contract().paginate(session, self._contract().Query(sort="id", limit=1))  # type: ignore[arg-type]
+        self.assertIsNone(page.pagination.total)
+        self.assertEqual(len(page.items), 1)
+        self.assertTrue(page.pagination.has_next)
+
+    def test_no_total_last_page_has_no_next(self) -> None:
+        with Session(self.engine) as session:
+            page = self._contract().paginate(
+                session, self._contract().Query(sort="id", limit=1, offset=1)  # type: ignore[arg-type]
+            )
+        self.assertIsNone(page.pagination.total)
+        self.assertEqual(len(page.items), 1)
+        self.assertFalse(page.pagination.has_next)
 
 
 class ProjectionSerializerTest(unittest.TestCase):

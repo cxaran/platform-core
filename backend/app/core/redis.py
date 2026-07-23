@@ -1,5 +1,3 @@
-# app/core/redis.py
-
 from redis import Redis
 
 from backend.app.core.settings import settings

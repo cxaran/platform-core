@@ -134,6 +134,38 @@ class SystemSettingsApiTest(unittest.TestCase):
         self.assertFalse(body["public_registration_effective"])
         self.assertEqual(body["environment"], "local")
 
+    # -- Analítica del sitio (GA4) ---------------------------------------------------
+
+    def test_analytics_enable_requires_measurement_id(self) -> None:
+        sid = self._settings_id()
+        resp = self.client.patch(
+            f"/api/v1/system-settings/{sid}", json={"analytics_enabled": True}
+        )
+        self.assertEqual(resp.status_code, 409, resp.text)
+        self.assertIn("analytics_requires_measurement_id", resp.text)
+
+    def test_public_analytics_is_opaque_when_disabled(self) -> None:
+        # Endpoint PÚBLICO (sin permisos): apagado no filtra ni el ID de medición.
+        app.dependency_overrides.pop(get_current_user, None)
+        resp = self.client.get("/api/v1/public/site/analytics")
+        self.assertEqual(resp.status_code, 200, resp.text)
+        self.assertEqual(resp.json(), {"enabled": False, "require_consent": True, "debug_mode": False, "measurement_id": None})
+
+    def test_public_analytics_exposes_config_when_enabled(self) -> None:
+        sid = self._settings_id()
+        enable = self.client.patch(
+            f"/api/v1/system-settings/{sid}",
+            json={"analytics_enabled": True, "analytics_ga4_measurement_id": "G-ABC123XYZ0"},
+        )
+        self.assertEqual(enable.status_code, 200, enable.text)
+
+        app.dependency_overrides.pop(get_current_user, None)
+        resp = self.client.get("/api/v1/public/site/analytics")
+        body = resp.json()
+        self.assertTrue(body["enabled"])
+        self.assertEqual(body["measurement_id"], "G-ABC123XYZ0")
+        self.assertTrue(body["require_consent"])
+
     def test_patch_updates_policy_and_audits_field_names_only(self) -> None:
         sid = self._settings_id()
         resp = self.client.patch(
@@ -445,11 +477,6 @@ class SystemSettingsApiTest(unittest.TestCase):
         body = resp.json()
         self.assertEqual(body["app_base_url"], "https://empresa.example.com")
         self.assertIsNotNone(body["app_base_url_verified_at"])
-        from backend.app.core.runtime_origins import verified_origins
-
-        # El set guarda la forma comparable del guard CSRF: puerto efectivo
-        # explícito (ver docstring de runtime_origins).
-        self.assertIn("https://empresa.example.com:443", verified_origins())
 
     def test_verify_domain_rejects_mismatch_and_bad_urls(self) -> None:
         import httpx

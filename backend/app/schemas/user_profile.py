@@ -2,11 +2,10 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from pydantic import EmailStr, Field, SecretStr, field_validator, model_validator
-from typing_extensions import Self
+from pydantic import EmailStr, Field, SecretStr
 
 from backend.app.schemas.base import ApiPatchSchema, ApiReadSchema, ApiWriteSchema
-from backend.app.schemas.user import validate_password
+from backend.app.schemas.user import PasswordConfirmMixin
 
 
 class UserProfileRead(ApiReadSchema):
@@ -28,19 +27,9 @@ class UserProfileUpdate(ApiPatchSchema):
     email: Optional[EmailStr] = None
 
 
-class UserPasswordChangeRequest(ApiWriteSchema):
+class UserPasswordChangeRequest(PasswordConfirmMixin, ApiWriteSchema):
     """Cambio de contraseña solicitado por el propio usuario."""
 
     current_password: SecretStr = Field(..., min_length=1, max_length=128)
     password: SecretStr = Field(..., min_length=8, max_length=128)
     confirm_password: SecretStr = Field(..., min_length=8, max_length=128)
-
-    @field_validator("password")
-    def password_validator(cls, value: SecretStr) -> SecretStr:
-        return validate_password(value)
-
-    @model_validator(mode="after")
-    def check_passwords_match(self) -> Self:
-        if self.password != self.confirm_password:
-            raise ValueError("Las contraseñas no coinciden")
-        return self

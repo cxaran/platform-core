@@ -16,8 +16,7 @@ type PageProps = {
 };
 
 /**
- * Detalle de SOLO LECTURA de un recurso, guiado por capability (último hueco de cobertura del
- * frontend; ver ``docs/frontend-coverage-audit.md``). Muestra TODOS los campos con la misma
+ * Detalle de SOLO LECTURA de un recurso, guiado por capability. Muestra TODOS los campos con la misma
  * metadata que usa la edición, sin un solo input. Las acciones de cabecera (Editar, sub-pantallas
  * relacionales, acciones de fila, descarga) sólo aparecen si el contrato las trae para el actor:
  * el backend ya filtra la capability por permiso, así que reusar esas señales = mismo RBAC que la

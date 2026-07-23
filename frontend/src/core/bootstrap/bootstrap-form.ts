@@ -32,6 +32,9 @@ export type BootstrapWizardDraft = {
   system_admin_role: SystemAdminRoleDraft;
   additional_roles: AdditionalRoleDraft[];
   // Política inicial de plataforma (editable después en Configuración del sistema).
+  // URL pública de la instalación: base de los enlaces de correo y del OAuth
+  // (login con Google, Drive). El wizard la propone desde la URL actual.
+  app_base_url: string;
   public_registration_enabled: boolean;
   password_reset_enabled: boolean;
   institution_name: string;
@@ -81,6 +84,7 @@ export function emptyBootstrapDraft(): BootstrapWizardDraft {
       description: "Administración inicial de la plataforma",
     },
     additional_roles: [],
+    app_base_url: "",
     public_registration_enabled: false,
     password_reset_enabled: true,
     institution_name: "",
@@ -108,6 +112,7 @@ export function buildBootstrapPayload(draft: BootstrapWizardDraft): BootstrapIni
         permissions: [...new Set(role.permissions)],
         assign_to_initial_user: role.assign_to_initial_user,
       })),
+    app_base_url: draft.app_base_url.trim() || null,
     public_registration_enabled: draft.public_registration_enabled,
     password_reset_enabled: draft.password_reset_enabled,
     institution_name: draft.institution_name.trim() || null,

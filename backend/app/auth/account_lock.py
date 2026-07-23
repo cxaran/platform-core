@@ -1,17 +1,13 @@
 import math
 from datetime import timedelta
 from typing import cast
-from urllib.parse import quote
 
 from backend.app.core.database import SessionDep
 from backend.app.core.redis import redis_client
 from backend.app.utils.utc_now import utc_now
 from backend.app.models.user import User
-from backend.app.services.email_service import action_email_html, send_system_email
-from backend.app.services.system_settings_service import (
-    installation_base_url,
-    trys_before_lock_effective,
-)
+from backend.app.services.email_service import send_system_email, token_action_email
+from backend.app.services.system_settings_service import trys_before_lock_effective
 
 from .security import generate_token, save_user
 from .token_store import delete_token_pair, get_subject, get_token, set_token_pair
@@ -53,22 +49,17 @@ async def increment_failed_login_attempts(
     if old_token:
         return
 
-    # Con dominio de instalación: botón/enlace hacia /unlock?token= (la página ya
-    # prellena el campo). Sin él: token en texto, como antes.
-    base = installation_base_url(session)
-    message = f"Tu cuenta ha sido bloqueada por {lock_minutes} minutos. Token de desbloqueo: {token}"
-    html = None
-    if base:
-        link = f"{base}/unlock?token={quote(token)}"
-        message = f"{message}\n\nDesbloquea tu cuenta aquí: {link}"
-        html = action_email_html(
-            message=(
-                f"Tu cuenta ha sido bloqueada por {lock_minutes} minutos tras varios "
-                f"intentos fallidos. Token de desbloqueo: {token}"
-            ),
-            action_url=link,
-            action_label="Desbloquear cuenta",
-        )
+    message, html = token_action_email(
+        session,
+        intro=(
+            f"Tu cuenta ha sido bloqueada por {lock_minutes} minutos tras varios "
+            f"intentos fallidos. Token de desbloqueo: {token}"
+        ),
+        token=token,
+        path="/unlock",
+        action_label="Desbloquear cuenta",
+        action_hint="Desbloquea tu cuenta aquí",
+    )
 
     await send_system_email(
         session,

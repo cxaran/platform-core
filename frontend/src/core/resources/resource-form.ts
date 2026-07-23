@@ -11,12 +11,12 @@ const SUPPORTED_CREATE_WIDGETS = new Set<WidgetType>([
   "password",
   "switch",
   "textarea",
-  // ``select`` (enum/opciones cerradas) y ``date`` (literal YYYY-MM-DD) son necesarios
-  // para los formularios clínicos (p. ej. sexo/estado y fecha de nacimiento del paciente).
+  // ``select`` (enum/opciones cerradas) y ``date`` (literal YYYY-MM-DD) cubren los
+  // campos de opción cerrada y de fecha civil de cualquier recurso.
   "select",
   "date",
   // ``datetime`` (YYYY-MM-DDTHH:MM), ``number`` (entero/decimal) y ``time`` (HH:MM)
-  // habilitan las pantallas clínicas centrales: consultas, signos vitales y agenda.
+  // habilitan campos temporales y numéricos de los recursos.
   "datetime",
   "number",
   "time",
@@ -77,7 +77,7 @@ export function assertSupportedUpdateForm(form: ResourceFormCapability): void {
 
 // Centinela: el campo se OMITE del payload (no se envía ninguna clave). Distinto de
 // enviar ``null``: omitir deja que el backend aplique el default del campo (p. ej.
-// ``status`` del paciente, que tiene default pero NO es nullable) y, en PATCH, deja el
+// un ``status`` con default pero NO nullable) y, en PATCH, deja el
 // valor sin cambios (``exclude_unset``). Enviar ``null`` rompería los campos con default
 // no-nullable y enviar ``""`` rompería validadores estrictos (EmailStr/date/datetime).
 const OMIT = Symbol("omit-field");

@@ -66,6 +66,42 @@ function adminLikeList(): ResourceListCapability {
   ] as FilterableField[]);
 }
 
+function numericList(): ResourceListCapability {
+  return makeList([
+    {
+      key: "size",
+      label: "Tamaño",
+      value_type: "integer",
+      operators: [
+        { key: "gt", label: "Mayor que", value_shape: "single", widget: "number", parameter_name: "size_gt" },
+        { key: "lt", label: "Menor que", value_shape: "single", widget: "number", parameter_name: "size_lt" },
+        {
+          key: "between",
+          label: "Entre",
+          value_shape: "range",
+          widget: "numberrange",
+          parameters: { from: "size_from", to: "size_to" },
+          range_end_inclusive: true,
+        },
+      ],
+    },
+  ] as FilterableField[]);
+}
+
+test("numberrange (between numérico) registra ambos extremos como parámetros de texto", () => {
+  const controls = buildFilterableControls(numericList());
+  assert.deepEqual(controls.paramNames, ["size_gt", "size_lt", "size_from", "size_to"]);
+  const between = controls.ordered[0].operators.find((op) => op.key === "between");
+  assert.equal(between?.fromParameter, "size_from");
+  assert.equal(between?.toParameter, "size_to");
+});
+
+test("numberrange acepta valores numéricos en ambos extremos", () => {
+  const controls = buildFilterableControls(numericList());
+  const filters = parseFilterableValues({ size_from: "10", size_to: "99", size_gt: "5" }, controls);
+  assert.deepEqual(filters, { size_from: "10", size_to: "99", size_gt: "5" });
+});
+
 test("buildFilterableControls expone todos los parámetros reales en orden", () => {
   const controls = buildFilterableControls(adminLikeList());
   assert.deepEqual(controls.paramNames, [

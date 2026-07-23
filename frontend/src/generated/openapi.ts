@@ -79,6 +79,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/users/me/ai-providers/oauth/openai/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start Oauth */
+        post: operations["start_oauth_api_v1_users_me_ai_providers_oauth_openai_start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/me/ai-providers/oauth/openai/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Complete Oauth */
+        post: operations["complete_oauth_api_v1_users_me_ai_providers_oauth_openai_complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/me/ai-providers/oauth/openai/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Oauth Status */
+        get: operations["oauth_status_api_v1_users_me_ai_providers_oauth_openai_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/me/ai-providers/oauth/openai": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Disconnect Oauth */
+        delete: operations["disconnect_oauth_api_v1_users_me_ai_providers_oauth_openai_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users/me/ai-providers": {
         parameters: {
             query?: never;
@@ -1061,6 +1129,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/public/site/analytics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Public Analytics
+         * @description Config PÚBLICA de analítica: la lee el sitio ANTES de cargar cualquier
+         *     script. Sin auth y cacheable; apagada no filtra ni el ID de medición. El
+         *     frontend solo carga GA4 en rutas públicas y respetando el consentimiento.
+         */
+        get: operations["read_public_analytics_api_v1_public_site_analytics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/domain-challenge/{nonce}": {
         parameters: {
             query?: never;
@@ -1100,8 +1190,7 @@ export interface paths {
          *     Deriva el candidato del header Origin si no se envía; lo normaliza (solo
          *     esquema+host+puerto) y hace la prueba REAL: pedir el domain-challenge A TRAVÉS
          *     de ese dominio y comparar el HMAC. Si pasa, se persiste (app_base_url +
-         *     verified_at), se AÑADE a los orígenes confiables en runtime (nunca reemplaza
-         *     los del entorno) y habilita los redirect URIs derivados (p. ej. Google Drive).
+         *     verified_at) y habilita los redirect URIs derivados (p. ej. Google Drive).
          */
         post: operations["verify_domain_api_v1_system_settings__item_id__verify_domain_post"];
         delete?: never;
@@ -1463,8 +1552,10 @@ export interface components {
          * AuditEventListItem
          * @description Versión de listado compatible con ``ResourceQuery``.
          *
-         *     Sólo campos factuales de la bitácora. ``changed_fields`` no se proyecta en el
-         *     listado (puede ser voluminoso y contener detalle sensible); se ve en el detalle.
+         *     Campos factuales de la bitácora. ``changed_fields`` viaja pero NO es columna
+         *     de la tabla (sin ``ui.list``): se muestra en el detalle del evento. Su
+         *     contenido es seguro por contrato de escritura (nombres de campos e ids
+         *     no-secretos; nunca valores sensibles).
          */
         AuditEventListItem: {
             /**
@@ -1490,6 +1581,10 @@ export interface components {
             actor_user_id?: string | null;
             /** Motivo */
             reason?: string | null;
+            /** Campos modificados */
+            changed_fields?: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * AuditEventRead
@@ -1892,7 +1987,7 @@ export interface components {
             additional_roles?: components["schemas"]["BootstrapAdditionalRole"][];
             /**
              * App Base Url
-             * @description Dominio público (origen) de la instalación, p. ej. https://mi-dominio.com. Se persiste en la configuración del sistema y habilita las mutaciones autenticadas por cookie desde ese origen (guard CSRF). El asistente lo propone desde la URL actual; verifícalo antes de enviar.
+             * @description Dominio público (origen) de la instalación, p. ej. https://mi-dominio.com. Se persiste en la configuración del sistema y se usa para construir URLs absolutas (enlaces de correo, redirect URIs de OAuth). El asistente lo propone desde la URL actual; verifícalo antes de enviar.
              */
             app_base_url?: string | null;
             /**
@@ -1912,16 +2007,6 @@ export interface components {
              * @description Nombre de la institución (opcional).
              */
             institution_name?: string | null;
-            /**
-             * Customer Session Days
-             * @description Días de sesión del cliente (sin roles). Vacío = default del despliegue. Editable después en Configuración del sistema.
-             */
-            customer_session_days?: number | null;
-            /**
-             * Staff Session Minutes
-             * @description Minutos de sesión del personal (con roles). Vacío = default del despliegue. Editable después en Configuración del sistema.
-             */
-            staff_session_minutes?: number | null;
         };
         /** BootstrapLimitsRead */
         BootstrapLimitsRead: {
@@ -2094,12 +2179,12 @@ export interface components {
          * FieldValueType
          * @enum {string}
          */
-        FieldValueType: "string" | "email" | "uuid" | "integer" | "decimal" | "boolean" | "date" | "time" | "datetime" | "enum" | "array";
+        FieldValueType: "string" | "email" | "uuid" | "integer" | "decimal" | "boolean" | "date" | "time" | "datetime" | "enum" | "array" | "json";
         /**
          * FilterOperator
          * @enum {string}
          */
-        FilterOperator: "eq" | "ne" | "contains" | "starts_with" | "ends_with" | "gte" | "lte" | "on" | "before" | "after" | "between" | "in" | "isnull";
+        FilterOperator: "eq" | "ne" | "contains" | "starts_with" | "ends_with" | "gt" | "gte" | "lt" | "lte" | "on" | "before" | "after" | "between" | "in" | "not_in" | "contains_any" | "contains_all" | "isnull";
         /**
          * FilterValueShape
          * @enum {string}
@@ -2311,6 +2396,41 @@ export interface components {
             /** Created At */
             created_at: string;
         };
+        /**
+         * OAuthCompleteRequest
+         * @description Callback del flujo OAuth: ``code`` y ``state`` recibidos del proveedor.
+         */
+        OAuthCompleteRequest: {
+            /** Código de autorización */
+            code: string;
+            /** State */
+            state: string;
+        };
+        /**
+         * OAuthStartResponse
+         * @description Inicio del flujo OAuth: URL de autorización y ``state`` anti-CSRF.
+         *
+         *     El navegador redirige a ``authorize_url``; al volver con el ``code`` debe enviar
+         *     el mismo ``state`` a ``/complete``. No incluye el ``code_verifier`` (server-side).
+         */
+        OAuthStartResponse: {
+            /** Authorize Url */
+            authorize_url: string;
+            /** State */
+            state: string;
+        };
+        /**
+         * OAuthStatusResponse
+         * @description Estado de la conexión OAuth del usuario. NUNCA incluye tokens.
+         */
+        OAuthStatusResponse: {
+            /** Connected */
+            connected: boolean;
+            /** Account Id */
+            account_id?: string | null;
+            /** Expires At */
+            expires_at?: string | null;
+        };
         /** OffsetPage[AuditEventListItem] */
         OffsetPage_AuditEventListItem_: {
             /** Items */
@@ -2368,7 +2488,7 @@ export interface components {
             /** Has Next */
             has_next: boolean;
             /** Total */
-            total: number;
+            total?: number | null;
         };
         /**
          * OptionsSourceType
@@ -2401,12 +2521,38 @@ export interface components {
             description?: string | null;
         };
         /**
+         * PublicAnalyticsConfig
+         * @description Config PÚBLICA de analítica del sitio (``GET /public/site/analytics``).
+         *
+         *     Apagada solo devuelve ``enabled: false`` (sin ID ni opciones). El ID de
+         *     medición de GA4 es público por diseño de Google; jamás viaja aquí ningún
+         *     secreto.
+         */
+        PublicAnalyticsConfig: {
+            /** Enabled */
+            enabled: boolean;
+            /** Measurement Id */
+            measurement_id?: string | null;
+            /**
+             * Require Consent
+             * @default true
+             */
+            require_consent: boolean;
+            /**
+             * Debug Mode
+             * @default false
+             */
+            debug_mode: boolean;
+        };
+        /**
          * PublicBranding
          * @description Marca pública: lo mínimo para el manifest y los encabezados.
          */
         PublicBranding: {
             /** Name */
             name: string;
+            /** Description */
+            description?: string | null;
             /** Has Logo */
             has_logo: boolean;
             /** Logo Version */
@@ -3030,6 +3176,8 @@ export interface components {
             app_base_url_verified_at?: string | null;
             /** Institution Name */
             institution_name?: string | null;
+            /** Site Description */
+            site_description?: string | null;
             /** Brand Logo Configured */
             brand_logo_configured: boolean;
             /** Brand Logo Updated At */
@@ -3044,14 +3192,6 @@ export interface components {
             google_auth_client_secret_configured: boolean;
             /** Password Reset Enabled */
             password_reset_enabled: boolean;
-            /** Customer Session Days */
-            customer_session_days?: number | null;
-            /** Staff Session Minutes */
-            staff_session_minutes?: number | null;
-            /** Customer Session Days Effective */
-            customer_session_days_effective: number;
-            /** Staff Session Minutes Effective */
-            staff_session_minutes_effective: number;
             /** Login Attempts Before Lock */
             login_attempts_before_lock?: number | null;
             /** Email Token Minutes */
@@ -3140,20 +3280,35 @@ export interface components {
              */
             institution_name?: string | null;
             /**
+             * Descripción pública del sitio
+             * @description Texto corto que muestran el navegador (metadata) y la PWA instalada. Es público: sin datos sensibles.
+             */
+            site_description?: string | null;
+            /**
              * Verificación de inicio de sesión
              * @description Segundo paso por correo en cada login: código de un solo uso o enlace. Requiere transporte de correo utilizable. Los administradores con cobertura completa quedan exentos siempre (garantía anti-bloqueo).
              */
             login_verification_mode?: ("disabled" | "code" | "link") | null;
             /**
-             * Sesión del cliente (días)
-             * @description Cuánto dura la sesión de un CLIENTE (usuario sin roles). La renovación deslizante la extiende con la actividad: un cliente que compra una vez al mes no vuelve a iniciar sesión. Vacío = default del despliegue.
+             * Analítica del sitio (GA4)
+             * @description Medir visitas y acciones del sitio público con Google Analytics 4. Requiere el ID de medición. El panel y el admin nunca se miden.
              */
-            customer_session_days?: number | null;
+            analytics_enabled?: boolean | null;
             /**
-             * Sesión del personal (minutos)
-             * @description Cuánto dura la sesión de un usuario CON roles (panel/admin) sin actividad; con actividad se renueva sola. Vacío = default del despliegue.
+             * ID de medición de GA4
+             * @description Formato G-XXXXXXXXXX. En Google Analytics: Administración → Flujos de datos → tu flujo web → ID de medición. Es un identificador público.
              */
-            staff_session_minutes?: number | null;
+            analytics_ga4_measurement_id?: string | null;
+            /**
+             * Exigir consentimiento de cookies
+             * @description Mostrar un aviso de cookies analíticas: hasta que el visitante acepte no se carga Google Analytics ni se envía ningún evento.
+             */
+            analytics_require_consent?: boolean | null;
+            /**
+             * Modo de depuración (DebugView)
+             * @description Enviar los eventos marcados para GA4 DebugView y así validar la medición. Apagar en operación normal.
+             */
+            analytics_debug_mode?: boolean | null;
             /**
              * Recuperación de contraseña
              * @description Permitir restablecer contraseña por correo. AVISO: apagarla con el registro cerrado y un solo administrador puede dejar la instalación sin acceso (la salida es el seed del servidor).
@@ -3216,26 +3371,6 @@ export interface components {
             email_smtp_tls?: boolean | null;
             /** SSL directo */
             email_smtp_ssl?: boolean | null;
-            /**
-             * Analítica del sitio (GA4)
-             * @description Medir visitas y acciones del sitio público con Google Analytics 4. Requiere el ID de medición. El panel y el admin nunca se miden. Guía completa: docs/producto/puesta-en-marcha.md.
-             */
-            analytics_enabled?: boolean | null;
-            /**
-             * ID de medición de GA4
-             * @description Formato G-XXXXXXXXXX. En Google Analytics: Administración → Flujos de datos → tu flujo web → ID de medición. Es un identificador público.
-             */
-            analytics_ga4_measurement_id?: string | null;
-            /**
-             * Exigir consentimiento de cookies
-             * @description Mostrar un aviso de cookies analíticas: hasta que el visitante acepte no se carga Google Analytics ni se envía ningún evento.
-             */
-            analytics_require_consent?: boolean | null;
-            /**
-             * Modo de depuración (DebugView)
-             * @description Enviar los eventos marcados para GA4 DebugView y así validar la medición. Apagar en operación normal.
-             */
-            analytics_debug_mode?: boolean | null;
             /**
              * Inicio de sesión con Google
              * @description Muestra 'Continuar con Google' en el login. Requiere client ID y secret configurados. El alta de cuentas nuevas exige además el registro público habilitado.
@@ -3460,7 +3595,7 @@ export interface components {
          * WidgetType
          * @enum {string}
          */
-        WidgetType: "text" | "email" | "password" | "switch" | "textarea" | "multiselect" | "select" | "number" | "date" | "daterange" | "datetime" | "time";
+        WidgetType: "text" | "email" | "password" | "switch" | "textarea" | "multiselect" | "select" | "number" | "date" | "daterange" | "numberrange" | "datetime" | "time";
     };
     responses: never;
     parameters: never;
@@ -3563,6 +3698,134 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CredentialLeaseResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_oauth_api_v1_users_me_ai_providers_oauth_openai_start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthStartResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    complete_oauth_api_v1_users_me_ai_providers_oauth_openai_complete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OAuthCompleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    oauth_status_api_v1_users_me_ai_providers_oauth_openai_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    disconnect_oauth_api_v1_users_me_ai_providers_oauth_openai_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                session_token?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3732,6 +3995,7 @@ export interface operations {
                 occurred_at_after?: string | null;
                 occurred_at_from?: string | null;
                 occurred_at_to?: string | null;
+                reason_contains?: string | null;
             };
             header?: never;
             path?: never;
@@ -4442,14 +4706,37 @@ export interface operations {
                 sort?: string;
                 status?: components["schemas"]["BackupRunStatus"] | null;
                 trigger_kind?: components["schemas"]["BackupTriggerKind"] | null;
+                error_code?: string | null;
+                explorer_status?: components["schemas"]["BackupExplorerStatus"] | null;
                 id_in?: string[] | null;
                 status_in?: components["schemas"]["BackupRunStatus"][] | null;
                 trigger_kind_in?: components["schemas"]["BackupTriggerKind"][] | null;
+                error_code_in?: string[] | null;
+                explorer_status_in?: components["schemas"]["BackupExplorerStatus"][] | null;
                 created_at_on?: string | null;
                 created_at_before?: string | null;
                 created_at_after?: string | null;
                 created_at_from?: string | null;
                 created_at_to?: string | null;
+                scheduled_for_on?: string | null;
+                scheduled_for_before?: string | null;
+                scheduled_for_after?: string | null;
+                scheduled_for_from?: string | null;
+                scheduled_for_to?: string | null;
+                started_at_on?: string | null;
+                started_at_before?: string | null;
+                started_at_after?: string | null;
+                started_at_from?: string | null;
+                started_at_to?: string | null;
+                file_size_bytes_gt?: number | null;
+                file_size_bytes_lt?: number | null;
+                file_size_bytes_from?: number | null;
+                file_size_bytes_to?: number | null;
+                attempt_count_gt?: number | null;
+                attempt_count_lt?: number | null;
+                attempt_count_from?: number | null;
+                attempt_count_to?: number | null;
+                status_not_in?: components["schemas"]["BackupRunStatus"][] | null;
             };
             header?: never;
             path?: never;
@@ -5177,11 +5464,17 @@ export interface operations {
                 name_contains?: string | null;
                 name_startswith?: string | null;
                 name_endswith?: string | null;
+                description_contains?: string | null;
                 created_at_on?: string | null;
                 created_at_before?: string | null;
                 created_at_after?: string | null;
                 created_at_from?: string | null;
                 created_at_to?: string | null;
+                updated_at_on?: string | null;
+                updated_at_before?: string | null;
+                updated_at_after?: string | null;
+                updated_at_from?: string | null;
+                updated_at_to?: string | null;
                 q?: string | null;
             };
             header?: never;
@@ -5513,6 +5806,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_public_analytics_api_v1_public_site_analytics_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicAnalyticsConfig"];
                 };
             };
         };
@@ -5875,14 +6188,20 @@ export interface operations {
                 is_active?: boolean | null;
                 email?: string | null;
                 name?: string | null;
+                last_name?: string | null;
                 id_in?: string[] | null;
                 name_in?: string[] | null;
+                last_name_in?: string[] | null;
                 email_in?: string[] | null;
                 is_active_in?: boolean[] | null;
                 name_ne?: string | null;
                 name_contains?: string | null;
                 name_startswith?: string | null;
                 name_endswith?: string | null;
+                last_name_ne?: string | null;
+                last_name_contains?: string | null;
+                last_name_startswith?: string | null;
+                last_name_endswith?: string | null;
                 email_ne?: string | null;
                 email_contains?: string | null;
                 email_startswith?: string | null;

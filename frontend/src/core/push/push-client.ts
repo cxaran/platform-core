@@ -7,6 +7,7 @@ import { browserApi } from "@/core/api/browser-client";
 import {
   buildSubscriptionPayload,
   detectPushCapability,
+  sameApplicationServerKey,
   urlBase64ToUint8Array,
   type PushCapability,
 } from "./push-support";
@@ -65,12 +66,22 @@ export async function enablePush(): Promise<boolean> {
     const { public_key } = await browserApi<{ public_key: string }>(
       "/api/v1/notifications/push/public-key",
     );
-    const subscription =
-      (await registration.pushManager.getSubscription()) ??
+    const desiredKey = urlBase64ToUint8Array(public_key);
+    let subscription = await registration.pushManager.getSubscription();
+    if (
+      subscription &&
+      !sameApplicationServerKey(subscription.options.applicationServerKey, desiredKey)
+    ) {
+      // Clave VAPID distinta a la publicada (p. ej. instalación recreada):
+      // reutilizarla daría fallos de firma permanentes. Se resuscribe limpio.
+      await subscription.unsubscribe();
+      subscription = null;
+    }
+    subscription =
+      subscription ??
       (await registration.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(public_key)
-          .buffer as ArrayBuffer,
+        applicationServerKey: desiredKey.buffer as ArrayBuffer,
       }));
     const payload = buildSubscriptionPayload(subscription.toJSON());
     if (!payload) return false;

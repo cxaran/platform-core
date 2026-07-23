@@ -35,6 +35,17 @@ class SystemSettingsUpdate(ApiPatchSchema):
         description="Nombre de la institución para membretes y encabezados.",
         json_schema_extra={"ui": {"form": True, "widget": "text"}},
     )
+    site_description: Optional[str] = Field(
+        default=None,
+        min_length=1,
+        max_length=300,
+        title="Descripción pública del sitio",
+        description=(
+            "Texto corto que muestran el navegador (metadata) y la PWA instalada. "
+            "Es público: sin datos sensibles."
+        ),
+        json_schema_extra={"ui": {"form": True, "widget": "text"}},
+    )
     login_verification_mode: Optional[Literal["disabled", "code", "link"]] = Field(
         default=None,
         title="Verificación de inicio de sesión",
@@ -55,28 +66,44 @@ class SystemSettingsUpdate(ApiPatchSchema):
             }
         },
     )
-    customer_session_days: Optional[int] = Field(
+    analytics_enabled: Optional[bool] = Field(
         default=None,
-        ge=1,
-        le=365,
-        title="Sesión del cliente (días)",
+        title="Analítica del sitio (GA4)",
         description=(
-            "Cuánto dura la sesión de un CLIENTE (usuario sin roles). La renovación "
-            "deslizante la extiende con la actividad: un cliente que compra una vez "
-            "al mes no vuelve a iniciar sesión. Vacío = default del despliegue."
+            "Medir visitas y acciones del sitio público con Google Analytics 4. "
+            "Requiere el ID de medición. El panel y el admin nunca se miden."
         ),
-        json_schema_extra={"ui": {"form": True, "widget": "number"}},
+        json_schema_extra={"ui": {"form": True, "widget": "switch"}},
     )
-    staff_session_minutes: Optional[int] = Field(
+    analytics_ga4_measurement_id: Optional[str] = Field(
         default=None,
-        ge=5,
-        le=1440,
-        title="Sesión del personal (minutos)",
+        min_length=6,
+        max_length=30,
+        pattern=r"^G-[A-Z0-9]{4,26}$",
+        title="ID de medición de GA4",
         description=(
-            "Cuánto dura la sesión de un usuario CON roles (panel/admin) sin "
-            "actividad; con actividad se renueva sola. Vacío = default del despliegue."
+            "Formato G-XXXXXXXXXX. En Google Analytics: Administración → Flujos de "
+            "datos → tu flujo web → ID de medición. Es un identificador público."
         ),
-        json_schema_extra={"ui": {"form": True, "widget": "number"}},
+        json_schema_extra={"ui": {"form": True, "widget": "text"}},
+    )
+    analytics_require_consent: Optional[bool] = Field(
+        default=None,
+        title="Exigir consentimiento de cookies",
+        description=(
+            "Mostrar un aviso de cookies analíticas: hasta que el visitante acepte "
+            "no se carga Google Analytics ni se envía ningún evento."
+        ),
+        json_schema_extra={"ui": {"form": True, "widget": "switch"}},
+    )
+    analytics_debug_mode: Optional[bool] = Field(
+        default=None,
+        title="Modo de depuración (DebugView)",
+        description=(
+            "Enviar los eventos marcados para GA4 DebugView y así validar la "
+            "medición. Apagar en operación normal."
+        ),
+        json_schema_extra={"ui": {"form": True, "widget": "switch"}},
     )
     password_reset_enabled: Optional[bool] = Field(
         default=None,
@@ -251,46 +278,6 @@ class SystemSettingsUpdate(ApiPatchSchema):
         title="SSL directo",
         json_schema_extra={"ui": {"form": True, "widget": "switch"}},
     )
-    analytics_enabled: Optional[bool] = Field(
-        default=None,
-        title="Analítica del sitio (GA4)",
-        description=(
-            "Medir visitas y acciones del sitio público con Google Analytics 4. "
-            "Requiere el ID de medición. El panel y el admin nunca se miden. "
-            "Guía completa: docs/producto/puesta-en-marcha.md."
-        ),
-        json_schema_extra={"ui": {"form": True, "widget": "switch"}},
-    )
-    analytics_ga4_measurement_id: Optional[str] = Field(
-        default=None,
-        min_length=6,
-        max_length=30,
-        pattern=r"^G-[A-Z0-9]{4,26}$",
-        title="ID de medición de GA4",
-        description=(
-            "Formato G-XXXXXXXXXX. En Google Analytics: Administración → Flujos de "
-            "datos → tu flujo web → ID de medición. Es un identificador público."
-        ),
-        json_schema_extra={"ui": {"form": True, "widget": "text"}},
-    )
-    analytics_require_consent: Optional[bool] = Field(
-        default=None,
-        title="Exigir consentimiento de cookies",
-        description=(
-            "Mostrar un aviso de cookies analíticas: hasta que el visitante acepte "
-            "no se carga Google Analytics ni se envía ningún evento."
-        ),
-        json_schema_extra={"ui": {"form": True, "widget": "switch"}},
-    )
-    analytics_debug_mode: Optional[bool] = Field(
-        default=None,
-        title="Modo de depuración (DebugView)",
-        description=(
-            "Enviar los eventos marcados para GA4 DebugView y así validar la "
-            "medición. Apagar en operación normal."
-        ),
-        json_schema_extra={"ui": {"form": True, "widget": "switch"}},
-    )
     google_login_enabled: Optional[bool] = Field(
         default=None,
         title="Inicio de sesión con Google",
@@ -343,6 +330,7 @@ class SystemSettingsRead(ApiReadSchema):
     app_base_url: Optional[str] = None
     app_base_url_verified_at: Optional[datetime] = None
     institution_name: Optional[str] = None
+    site_description: Optional[str] = None
     # Logo de la instalación (metadato; el binario JAMÁS se proyecta aquí).
     brand_logo_configured: bool
     brand_logo_updated_at: Optional[datetime] = None
@@ -351,11 +339,6 @@ class SystemSettingsRead(ApiReadSchema):
     google_auth_client_id: Optional[str] = None
     google_auth_client_secret_configured: bool
     password_reset_enabled: bool
-    # Duración de sesión (None = default del despliegue); efectivos abajo.
-    customer_session_days: Optional[int] = None
-    staff_session_minutes: Optional[int] = None
-    customer_session_days_effective: int
-    staff_session_minutes_effective: int
     # Política operativa (None = default del despliegue); efectivos abajo.
     login_attempts_before_lock: Optional[int] = None
     email_token_minutes: Optional[int] = None
@@ -441,23 +424,6 @@ class VerifyDomainRequest(ApiPatchSchema):
         description="https://tu-dominio; vacío = el dominio por el que navegas ahora.",
         json_schema_extra={"ui": {"form": True, "widget": "text"}},
     )
-
-
-class PublicAnalyticsConfig(ApiReadSchema):
-    """Config PÚBLICA de analítica para el sitio (GET /public/site/analytics).
-
-    Apagada, solo devuelve ``enabled: false`` (sin ID ni opciones). El ID de
-    medición de GA4 es público por diseño de Google; jamás viaja aquí ningún
-    secreto (las claves de Measurement Protocol, si algún día existen, son
-    exclusivas del servidor).
-    """
-
-    enabled: bool
-    measurement_id: Optional[str] = None
-    require_consent: bool = True
-    debug_mode: bool = False
-
-
 class SetupChecklistItemRead(ApiReadSchema):
     """Ítem del checklist de puesta en marcha (estado derivado)."""
 
@@ -475,3 +441,17 @@ class SetupChecklistRead(ApiReadSchema):
     pending_count: int
     # Para el banner visual de entorno (dev/staging/producción).
     environment: str
+
+
+class PublicAnalyticsConfig(ApiReadSchema):
+    """Config PÚBLICA de analítica del sitio (``GET /public/site/analytics``).
+
+    Apagada solo devuelve ``enabled: false`` (sin ID ni opciones). El ID de
+    medición de GA4 es público por diseño de Google; jamás viaja aquí ningún
+    secreto.
+    """
+
+    enabled: bool
+    measurement_id: Optional[str] = None
+    require_consent: bool = True
+    debug_mode: bool = False

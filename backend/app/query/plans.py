@@ -7,7 +7,7 @@ Cuando no se pasa un plan explícito, ``from_schema`` lo reconstruye desde los
 atributos ``__query_*__`` que el factory sigue inyectando en el schema generado
 (ruta heredada).
 
-El orden tiene tres roles separados (Fase 2, Paso 4):
+El orden tiene tres roles separados:
 
 - ``public_sort_columns`` — campos que el cliente puede pedir con ``?sort=``.
 - ``orderable_columns`` — superconjunto que ``default_order`` puede usar (incluye
@@ -55,9 +55,14 @@ class CompiledExtendedFilter:
     la projection la proyecta en el contrato de capacidades.
 
     ``parameter_name`` aplica a operadores de un solo parámetro
-    (``ne/contains/starts_with/ends_with/on/before/after``). ``from_parameter`` y
-    ``to_parameter`` aplican solo a ``between`` (dos parámetros, ambos inclusivos para
-    el usuario).
+    (``ne/contains/starts_with/ends_with/gt/lt/on/before/after`` y los de lista
+    ``not_in/contains_any/contains_all``). ``from_parameter`` y ``to_parameter``
+    aplican solo a ``between`` (dos parámetros, ambos inclusivos para el usuario).
+
+    ``calendar`` distingue la semántica de fecha: ``True`` para los operadores de día
+    de calendario (``on/before/after`` y ``between`` sobre ``datetime``, con límites de
+    día en la zona de aplicación); ``False`` para comparaciones directas (``gt/lt`` y
+    ``between`` numérico/``date``).
     """
 
     field_name: str
@@ -66,6 +71,7 @@ class CompiledExtendedFilter:
     parameter_name: str | None = None
     from_parameter: str | None = None
     to_parameter: str | None = None
+    calendar: bool = False
 
 
 def build_filter_parameters(

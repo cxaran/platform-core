@@ -12,7 +12,7 @@ export function RowActionsFlyout({
   lead,
   children,
 }: Readonly<{
-  // Acción SIEMPRE VISIBLE (p. ej. el botón de chat del paciente): vive dentro del
+  // Acción SIEMPRE VISIBLE (p. ej. un botón de acceso directo): vive dentro del
   // ancla, entre el flyout y la pestaña, para que la píldora se despliegue a su
   // izquierda sin taparla.
   lead?: ReactNode;

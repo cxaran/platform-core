@@ -15,6 +15,7 @@ reportados son SEGUROS: nunca credenciales ni volcados del proveedor.
 """
 
 import logging
+from urllib.parse import quote
 from dataclasses import dataclass
 from typing import Optional
 
@@ -81,6 +82,33 @@ def transport_unavailable_reason(config: SystemSettings) -> Optional[str]:
     if missing:
         return f"Configuración de Resend incompleta: falta {', '.join(missing)}."
     return None
+
+
+def token_action_email(
+    session: Session,
+    *,
+    intro: str,
+    token: str,
+    path: str,
+    action_label: str,
+    action_hint: str,
+) -> tuple[str, Optional[str]]:
+    """Cuerpo (texto, html) de un correo de token con enlace de acción opcional.
+
+    Con dominio de instalación declarado: enlace que prellena el token en
+    ``{base}{path}?token=…`` más versión HTML con botón. Sin dominio: el token
+    va en texto plano y el flujo sigue funcionando.
+    """
+    from backend.app.services.system_settings_service import installation_base_url
+
+    message = intro
+    html = None
+    base = installation_base_url(session)
+    if base:
+        link = f"{base}{path}?token={quote(token)}"
+        message = f"{intro}\n\n{action_hint}: {link}"
+        html = action_email_html(message=intro, action_url=link, action_label=action_label)
+    return message, html
 
 
 def action_email_html(*, message: str, action_url: str, action_label: str) -> str:

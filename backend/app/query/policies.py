@@ -1,10 +1,9 @@
-"""``QueryPolicy``: política declarativa por recurso (Fase 2, Paso 1).
+"""``QueryPolicy``: la forma canónica de la configuración de un recurso.
 
-Sustituye conceptualmente las listas paralelas de ``QueryOptions`` por una regla por
-campo (``FieldSpec``) más configuración de sort/búsqueda/paginación/límites.
-
-En el Paso 1 la API operativa sigue siendo ``QueryOptions``; ``policy_from_options``
-es el adaptador que la traduce a una ``QueryPolicy`` equivalente. Para garantizar
+Una regla por campo (``FieldSpec``) más configuración de sort/búsqueda/paginación/
+límites. La API de autoría habitual sigue siendo ``QueryOptions`` (listas cortas);
+``policy_from_options`` es el adaptador que la traduce a una ``QueryPolicy``
+equivalente. Para garantizar
 equivalencia EXACTA con el schema/SQL que genera el factory, el adaptador reutiliza
 la introspección del factory (resolución de columna y tipo) en lugar de duplicarla.
 """
@@ -14,8 +13,9 @@ from typing import Any
 
 from backend.app.query.fields import FieldSpec
 from backend.app.query.operators import Operator
+from backend.app.query.search import SearchMode
 
-# Default heredado del factory actual (no se parametriza en el Paso 1). Los límites
+# Default heredado del factory. Los límites
 # de búsqueda ya son configurables vía QueryOptions.search_min/max_length.
 _DEFAULT_LIMIT = 20
 
@@ -33,6 +33,7 @@ class SortConfig:
 class SearchConfig:
     min_len: int
     max_len: int
+    mode: SearchMode = SearchMode.ILIKE
 
 
 @dataclass(frozen=True)
@@ -87,7 +88,7 @@ def policy_from_options(
     # Import diferido: rompe el ciclo options -> policies -> factory -> options y
     # reutiliza la MISMA introspección que el factory (equivalencia por construcción).
     from backend.app.query.factory import (
-        _compatible_scalar_type,
+        _compatible_field_type,
         _requested_fields,
         _resolve_column,
         _supports_range,
@@ -104,7 +105,7 @@ def policy_from_options(
     specs: list[FieldSpec] = []
     for name in requested:
         annotation = resource_schema.model_fields[name].annotation
-        field_type = _compatible_scalar_type(name, annotation)
+        field_type = _compatible_field_type(name, annotation)
         source = _resolve_column(orm_model, name, options)
 
         operators: set[Operator] = set()
@@ -143,7 +144,9 @@ def policy_from_options(
             default_order=options.default_sort,
         ),
         search=SearchConfig(
-            min_len=options.search_min_length, max_len=options.search_max_length
+            min_len=options.search_min_length,
+            max_len=options.search_max_length,
+            mode=options.search_mode,
         ),
         pagination=PaginationConfig(default_limit=_DEFAULT_LIMIT, max_limit=options.max_limit),
         limits=LimitsConfig(

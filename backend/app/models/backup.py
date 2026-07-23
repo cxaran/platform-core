@@ -40,7 +40,7 @@ class BackupSettings(Base):
     fijo por minuto consulta ``next_run_at`` (UTC) y sólo procesa trabajo vencido.
 
     El ``drive_refresh_token_ciphertext`` es el refresh token de Google cifrado con la
-    clave Fernet del despliegue (BACKUP_TOKEN_ENCRYPTION_KEY); NUNCA se proyecta a la
+    clave Fernet del despliegue (APP_ENCRYPTION_KEY); NUNCA se proyecta a la
     API. Del cifrado del ARCHIVO sólo se guarda el recipient PÚBLICO de age (la clave
     privada vive fuera del sistema, con el administrador). Fechas en UTC naive, como
     todo el esquema (convención del repo; ``utc_now``).

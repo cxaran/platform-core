@@ -26,6 +26,8 @@ class PublicBranding(ApiSchema):
     """Marca pública: lo mínimo para el manifest y los encabezados."""
 
     name: str
+    # Descripción pública del sitio (metadata del navegador y del manifest).
+    description: Optional[str] = None
     has_logo: bool
     # Cache-buster del manifest/íconos: cambia con cada reemplazo del logo.
     logo_version: Optional[str] = None
@@ -38,6 +40,7 @@ def read_public_branding(session: SessionDep, response: Response) -> PublicBrand
     response.headers["Cache-Control"] = "public, max-age=60"
     return PublicBranding(
         name=project_display_name(session),
+        description=row.site_description,
         has_logo=has_logo,
         logo_version=(
             row.brand_logo_updated_at.isoformat() if has_logo and row.brand_logo_updated_at else None

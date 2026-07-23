@@ -20,7 +20,7 @@ The registry wires real adapters, each behind opt-in settings (base URL + enable
 - **OpenRouter** (`providers/openrouter/`) — OpenAI-compatible wire with rich `/models` discovery (real capability metadata and pricing).
 - **Anthropic** (`providers/anthropic/`) — Messages API (a distinct wire family: top-level `system`, typed content blocks, extended thinking by token budget).
 - **Google Gemini** (`providers/gemini/`) — Generative Language API (`streamGenerateContent`, `systemInstruction`, function calling correlated by name).
-- **Local / on-prem** (`providers/local/`) — Ollama / vLLM through their OpenAI-compatible endpoints; usually no API key (an empty lease is valid), and PHI never leaves the clinic.
+- **Local / on-prem** (`providers/local/`) — Ollama / vLLM through their OpenAI-compatible endpoints; usually no API key (an empty lease is valid), and no data leaves the host.
 - **Fake** (`providers/fake/`) — synthetic dev/test provider, opt-in as described above.
 
 OpenAI-compatible adapters share the wire core in `providers/openai-compat/chat.ts` (request build, SSE streaming, tool-call relay, parallel tool-call draining). Tool names are sanitized for strict wires (`^[a-zA-Z0-9_-]{1,64}$`, canonical helper in `kernel/tool-names.ts`) and reverted to the original namespaced name (`resource.*`, `ui.*`) when the tool call is emitted to the browser.

@@ -6,7 +6,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import { ApiRequestError } from "@/core/api/api-error";
 import { verifyLogin } from "@/core/auth/public-auth-client";
-import { AuthAlert, PublicAuthShell } from "@/features/auth/PublicAuthShell";
+import { AuthAlert } from "@/features/auth/auth-pieces";
+import { PublicAuthShell } from "@/features/auth/PublicAuthShell";
 
 /**
  * Aterrizaje del ENLACE de verificación de login. Canjea el token de la URL por

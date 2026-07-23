@@ -95,14 +95,24 @@ def build_setup_checklist(
         )
     )
 
+    if system.app_base_url_verified_at:
+        domain_detail = f"{system.app_base_url} (verificado)."
+    elif system.app_base_url:
+        domain_detail = (
+            f"{system.app_base_url} declarado; verifícalo (reto de dominio) para "
+            "habilitar los respaldos a Google Drive."
+        )
+    else:
+        domain_detail = (
+            "Declara y verifica el dominio: es la base de los enlaces de correo y "
+            "del OAuth (login con Google, Drive)."
+        )
     items.append(
         ChecklistItem(
             key="domain",
             title="Dominio de la instalación",
             status="complete" if system.app_base_url_verified_at else "pending",
-            detail=(
-                system.app_base_url or "Confirma el dominio para calcular las URLs de OAuth."
-            ),
+            detail=domain_detail,
         )
     )
 
@@ -181,6 +191,19 @@ def build_setup_checklist(
         )
     )
 
+    items.append(
+        ChecklistItem(
+            key="analytics",
+            title="Analítica del sitio (GA4)",
+            status="complete",  # decisión tomada (default: apagada; es opcional)
+            detail=(
+                f"Habilitada ({system.analytics_ga4_measurement_id})."
+                if system.analytics_enabled
+                else "Deshabilitada (opcional: se configura aquí con el ID de medición de GA4)."
+            ),
+        )
+    )
+
     setup = session.get(PlatformSetup, 1)
     dismissed = setup is not None and setup.onboarding_dismissed_at is not None
     return items, dismissed
@@ -202,8 +225,6 @@ def apply_bootstrap_choices(
     public_registration_enabled: bool,
     institution_name: Optional[str],
     password_reset_enabled: bool = True,
-    customer_session_days: Optional[int] = None,
-    staff_session_minutes: Optional[int] = None,
     app_base_url: Optional[str] = None,
 ) -> None:
     """Aplica al singleton las decisiones tomadas en el asistente de bootstrap."""
@@ -212,61 +233,58 @@ def apply_bootstrap_choices(
     row.password_reset_enabled = password_reset_enabled
     if institution_name:
         row.institution_name = institution_name.strip()
-    if customer_session_days is not None:
-        row.customer_session_days = customer_session_days
-    if staff_session_minutes is not None:
-        row.staff_session_minutes = staff_session_minutes
     if app_base_url:
         # Dominio declarado por el operador en el asistente (confianza del token de
         # setup). Se persiste SIN verified_at: el reto HMAC (verify-domain) sigue
         # siendo la verificación real que pide el checklist y habilita los redirect
-        # URIs derivados. Aun sin verificar, el guard CSRF lo acepta desde ya —
-        # sin esto, ninguna mutación por cookie (incluida la propia verificación)
-        # funcionaría en una instalación sin TRUSTED_BROWSER_ORIGINS.
-        from backend.app.core.runtime_origins import add_verified_origin, normalize_base_url
-
-        normalized = normalize_base_url(app_base_url)
+        # URIs derivados.
+        normalized = public_base_url_or_none(app_base_url)
         if normalized is not None:
             row.app_base_url = normalized
-            add_verified_origin(normalized)
     session.add(row)
 
 
-def installation_base_url(session: Session) -> Optional[str]:
-    """Origen público de la instalación para construir enlaces absolutos (correos).
+def public_base_url_or_none(raw: str) -> Optional[str]:
+    """Normaliza el dominio público de la instalación o devuelve ``None``.
 
-    Prefiere el dominio declarado en el bootstrap / verificado por reto
-    (``app_base_url``); cae al primer origen confiable del entorno. ``None`` si
-    no hay ninguno: el correo degrada a token en texto (sin enlace).
+    Única puerta de escritura de ``app_base_url`` (bootstrap y verify-domain):
+    valida el formato (origen http(s) sin ruta/credenciales) y, en producción,
+    exige HTTPS — un dominio http produciría enlaces y redirects inseguros.
+    """
+    from backend.app.utils.base_url import normalize_base_url
+
+    normalized = normalize_base_url(raw)
+    if normalized is None:
+        return None
+    if settings.environment == "production" and not normalized.startswith("https://"):
+        return None
+    return normalized
+
+
+def installation_base_url(session: Session) -> Optional[str]:
+    """URL pública de la instalación para construir enlaces absolutos (correos).
+
+    Es el dominio declarado por el administrador en el bootstrap o en
+    Configuración (``app_base_url``). ``None`` mientras no exista: el correo
+    degrada a token en texto (sin enlace).
     """
     row = get_system_settings(session)
     if row.app_base_url:
         return row.app_base_url.rstrip("/")
-    for origin in sorted(settings.trusted_origins):
-        # trusted_origins normaliza con puerto efectivo explícito; para un enlace
-        # legible se retira el puerto por defecto del esquema.
-        if origin.startswith("https://") and origin.endswith(":443"):
-            return origin[: -len(":443")]
-        if origin.startswith("http://") and origin.endswith(":80"):
-            return origin[: -len(":80")]
-        return origin
     return None
 
 
-def customer_session_days_effective(session: Session) -> int:
-    """Días de sesión del cliente: política en BD o default del despliegue."""
-    return (
-        get_system_settings(session).customer_session_days
-        or settings.customer_session_expire_days
-    )
+def verified_installation_base_url(session: Session) -> Optional[str]:
+    """URL pública SOLO si el dominio pasó el reto HMAC (``verify-domain``).
 
-
-def staff_session_minutes_effective(session: Session) -> int:
-    """Minutos de sesión del personal: política en BD o default del despliegue."""
-    return (
-        get_system_settings(session).staff_session_minutes
-        or settings.access_token_expire_minutes
-    )
+    Es la base que exigen los redirect URIs de OAuth (login con Google, Drive):
+    posesión probada del dominio, no solo intención declarada. ``None`` si no
+    hay dominio verificado.
+    """
+    row = get_system_settings(session)
+    if row.app_base_url and row.app_base_url_verified_at:
+        return row.app_base_url.rstrip("/")
+    return None
 
 
 def trys_before_lock_effective(session: Session) -> int:

@@ -207,7 +207,9 @@ export function ExportDialog({
           );
           if (cancelled) return;
           setSample({
-            total: page.pagination.total,
+            // Feeds sin total (``NoTotalCount``): sin conteo exacto, se estima con las
+            // filas de la muestra (el usuario ve "al menos N").
+            total: page.pagination.total ?? page.items.length,
             rows: page.items as Record<string, unknown>[],
           });
         } catch {

@@ -7,7 +7,7 @@ from sqlalchemy import Select
 from sqlalchemy.orm import Session
 
 from backend.app.query.compiler import apply_query_schema
-from backend.app.query.count_strategies import AutomaticCount, CountStrategy
+from backend.app.query.count_strategies import AutomaticCount, CountStrategy, NoTotalCount
 from backend.app.query.plans import CompiledQueryPlan
 from backend.app.query.schema import OffsetQuerySchema
 from backend.app.query.serializers import EntitySerializer, RowSerializer
@@ -39,6 +39,19 @@ def paginate(
     serializer: RowSerializer = row_serializer if row_serializer is not None else EntitySerializer()
 
     filtered = apply_query_schema(stmt=stmt, query=query, plan=resolved_plan)
+
+    # Modo sin total (feeds grandes): no se cuenta. Se pide una fila de más para saber si
+    # hay página siguiente; ``total`` viaja como ``None`` y la paginación es prev/next.
+    if isinstance(counter, NoTotalCount):
+        page = serializer.rows(
+            session, filtered.offset(query.offset).limit(query.limit + 1)
+        )
+        has_next = len(page) > query.limit
+        items = [serializer.serialize(row, item_schema) for row in page[: query.limit]]
+        pagination = OffsetPagination(
+            limit=query.limit, offset=query.offset, total=None, has_next=has_next
+        )
+        return OffsetPage(items=items, pagination=pagination)
 
     total = counter.count(session, filtered, resolved_plan)
     rows = serializer.rows(session, filtered.offset(query.offset).limit(query.limit))

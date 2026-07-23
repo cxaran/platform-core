@@ -9,7 +9,6 @@ export interface GatewaySettings {
   // el mismo origen. El gateway la reenvía a /api/v1/auth/me para verificar que la sesión del
   // usuario sigue viva antes de correr un turno. Opcional (default "session_token").
   backendSessionCookieName?: string | undefined;
-  allowedOrigins: string[];
   globalMaxContextTokens: number;
   safetyReserveTokens: number;
   maxWebSocketMessageBytes: number;
@@ -108,10 +107,6 @@ export function loadSettings(): GatewaySettings {
     enableRootPathAlias: booleanFromEnv("GATEWAY_ENABLE_ROOT_PATH_ALIAS", true),
     cookieName: process.env.GATEWAY_PUBLIC_COOKIE_NAME ?? "mg_session",
     backendSessionCookieName: process.env.GATEWAY_BACKEND_SESSION_COOKIE_NAME ?? "session_token",
-    allowedOrigins: (process.env.GATEWAY_ALLOWED_ORIGINS ?? "http://localhost:3000")
-      .split(",")
-      .map((origin) => origin.trim())
-      .filter(Boolean),
     globalMaxContextTokens: numberFromEnv("GATEWAY_GLOBAL_MAX_CONTEXT_TOKENS", 128000),
     safetyReserveTokens: numberFromEnv("GATEWAY_SAFETY_RESERVE_TOKENS", 1024),
     maxWebSocketMessageBytes: numberFromEnv("GATEWAY_MAX_WS_MESSAGE_BYTES", 1024 * 1024),

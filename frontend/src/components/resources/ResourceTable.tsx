@@ -250,8 +250,8 @@ export function ResourceTable({
   // Selección múltiple (checkbox por fila + página completa). Requiere que la
   // página envuelva la tabla en ``RowSelectionProvider`` (islas de cliente).
   selectable?: boolean;
-  // Acción ESPECIAL por fila, SIEMPRE VISIBLE junto a la pestaña de acciones (p. ej. el botón de
-  // chat del paciente). Opt-in: sólo lo pasa la tabla de pacientes.
+  // Acción ESPECIAL por fila, SIEMPRE VISIBLE junto a la pestaña de acciones (p. ej. un botón
+  // de acceso directo). Opt-in: sólo lo pasa la tabla que lo necesite.
   renderRowLead?: (id: string, row: Record<string, unknown>) => ReactNode;
 }>) {
   const hiddenSet = new Set(hiddenColumns);

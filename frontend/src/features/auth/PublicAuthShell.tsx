@@ -1,6 +1,5 @@
-import Link from "next/link";
 
-import { AnimatedOrb } from "@/components/ui/AnimatedOrb";
+import { BrandMark } from "@/features/auth/BrandMark";
 
 /**
  * Marco visual común a las páginas públicas de auth — re-skin del LOGIN del diseño (MP-CTRL-0127):
@@ -38,12 +37,7 @@ export function PublicAuthShell({
       </div>
 
       <div className="relative z-[1] m-auto flex w-full max-w-[392px] flex-col items-center">
-        <div className="orb-intro-soft">
-          <AnimatedOrb size={84} />
-        </div>
-        <h1 className="text-blur-intro mt-5 text-[27px] font-semibold tracking-tight text-[var(--tx)]">
-          Platform Core
-        </h1>
+        <BrandMark />
         <h2 className="text-blur-intro-delay mt-2 text-center text-[14.5px] font-normal text-[var(--tx2)]">
           {title}
         </h2>
@@ -57,48 +51,5 @@ export function PublicAuthShell({
         </div>
       </div>
     </main>
-  );
-}
-
-export function AuthLink({ href, children }: Readonly<{ href: string; children: React.ReactNode }>) {
-  return (
-    <Link
-      href={href}
-      className="font-medium text-[var(--accent-tx)] underline-offset-2 hover:underline"
-    >
-      {children}
-    </Link>
-  );
-}
-
-/**
- * Mensaje de estado en bloque (error/ok) con tokens de tema. Reutilizable por los
- * formularios públicos para no duplicar estilos; soporta light y dark.
- */
-export function AuthAlert({
-  tone,
-  role = "status",
-  children,
-}: Readonly<{ tone: "danger" | "ok"; role?: "alert" | "status"; children: React.ReactNode }>) {
-  const toneClass =
-    tone === "danger"
-      ? "border-[color-mix(in_srgb,var(--danger)_35%,transparent)] bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] text-[var(--danger)]"
-      : "border-[color-mix(in_srgb,var(--ok)_35%,transparent)] bg-[color-mix(in_srgb,var(--ok)_13%,transparent)] text-[var(--ok)]";
-  return (
-    <div role={role} className={`rounded-[11px] border px-4 py-3 text-sm ${toneClass}`}>
-      {children}
-    </div>
-  );
-}
-
-/** Label estándar de los formularios públicos. */
-export function AuthLabel({
-  htmlFor,
-  children,
-}: Readonly<{ htmlFor: string; children: React.ReactNode }>) {
-  return (
-    <label htmlFor={htmlFor} className="text-sm font-medium text-[var(--tx2)]">
-      {children}
-    </label>
   );
 }

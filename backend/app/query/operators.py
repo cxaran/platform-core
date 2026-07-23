@@ -1,20 +1,29 @@
-"""Operadores declarativos del modelo de query (Fase 2, Paso 1 + C1).
+"""Operadores declarativos del modelo de query.
 
 Operadores REALES y el parámetro de query que genera cada uno:
 
-    eq          -> {name}
-    ne          -> {name}_ne
-    contains    -> {name}_contains      (ILIKE %v%, case-insensitive, escapado)
-    starts_with -> {name}_startswith    (ILIKE v%)
-    ends_with   -> {name}_endswith      (ILIKE %v)
-    in          -> {name}_in
-    isnull      -> {name}_isnull
-    gte         -> {name}_gte
-    lte         -> {name}_lte
-    on          -> {name}_on            (fecha de calendario: día completo)
-    before      -> {name}_before        (< inicio del día)
-    after       -> {name}_after         (>= inicio del día siguiente)
-    between     -> {name}_from + {name}_to   (DOS parámetros; ambos inclusivos)
+    eq           -> {name}
+    ne           -> {name}_ne
+    contains     -> {name}_contains      (ILIKE %v%, case-insensitive, escapado)
+    starts_with  -> {name}_startswith    (ILIKE v%)
+    ends_with    -> {name}_endswith      (ILIKE %v)
+    in           -> {name}_in
+    not_in       -> {name}_not_in        (complemento de ``in``: lista de valores)
+    isnull       -> {name}_isnull
+    gt           -> {name}_gt            (mayor estricto; comparación directa)
+    gte          -> {name}_gte
+    lt           -> {name}_lt            (menor estricto; comparación directa)
+    lte          -> {name}_lte
+    on           -> {name}_on            (fecha de calendario: día completo)
+    before       -> {name}_before        (< inicio del día)
+    after        -> {name}_after         (>= inicio del día siguiente)
+    between      -> {name}_from + {name}_to   (DOS parámetros; ambos inclusivos)
+    contains_any -> {name}_contains_any  (columna ARRAY: solapa cualquiera, ``&&``)
+    contains_all -> {name}_contains_all  (columna ARRAY: contiene todos, ``@>``)
+
+``between`` es polimórfico según el tipo del campo: en columnas ``datetime`` usa
+límites de día de calendario (dos parámetros ``date``); en columnas numéricas/``date``
+compara los extremos directamente (dos parámetros del tipo del campo, ambos inclusivos).
 
 ``range`` NO es operador real: atajo de configuración que se normaliza a
 ``{gte, lte}``. ``searchable`` tampoco: capacidad separada para ``q``.
@@ -39,6 +48,8 @@ from uuid import UUID
 
 from pydantic import EmailStr
 
+from backend.app.query.annotations import is_enum_type
+
 
 class Operator(str, Enum):
     EQ = "eq"
@@ -47,13 +58,20 @@ class Operator(str, Enum):
     STARTS_WITH = "starts_with"
     ENDS_WITH = "ends_with"
     IN = "in"
+    NOT_IN = "not_in"
     ISNULL = "isnull"
+    GT = "gt"
     GTE = "gte"
+    LT = "lt"
     LTE = "lte"
     ON = "on"
     BEFORE = "before"
     AFTER = "after"
     BETWEEN = "between"
+    # Operadores de columna ARRAY (Postgres): ``contains_any`` = solapa (``&&``),
+    # ``contains_all`` = contiene (``@>``). Toman una lista del tipo del elemento.
+    CONTAINS_ANY = "contains_any"
+    CONTAINS_ALL = "contains_all"
 
 
 # Atajo de configuración (no operador real): se expande a gte + lte.
@@ -69,12 +87,17 @@ _PARAM_SUFFIX: dict[Operator, str] = {
     Operator.STARTS_WITH: "_startswith",
     Operator.ENDS_WITH: "_endswith",
     Operator.IN: "_in",
+    Operator.NOT_IN: "_not_in",
     Operator.ISNULL: "_isnull",
+    Operator.GT: "_gt",
     Operator.GTE: "_gte",
+    Operator.LT: "_lt",
     Operator.LTE: "_lte",
     Operator.ON: "_on",
     Operator.BEFORE: "_before",
     Operator.AFTER: "_after",
+    Operator.CONTAINS_ANY: "_contains_any",
+    Operator.CONTAINS_ALL: "_contains_all",
 }
 
 BETWEEN_FROM_SUFFIX = "_from"
@@ -86,9 +109,20 @@ TEXT_MATCH_OPERATORS: frozenset[Operator] = frozenset(
 )
 
 # Operadores de fecha de calendario (valor date, compilados con límites de día en la
-# zona horaria de aplicación). ``between`` es de dos parámetros.
+# zona horaria de aplicación). ``between`` es de dos parámetros. En columnas numéricas/
+# ``date`` ``between`` NO es de calendario: ver ``VALUE_BETWEEN`` en el compiler.
 DATE_CALENDAR_OPERATORS: frozenset[Operator] = frozenset(
     {Operator.ON, Operator.BEFORE, Operator.AFTER, Operator.BETWEEN}
+)
+
+# Comparación estricta de un solo valor (mayor/menor que), comparación DIRECTA (no
+# límites de día): aplica a los tipos de rango (int/Decimal/date/datetime).
+STRICT_COMPARISON_OPERATORS: frozenset[Operator] = frozenset({Operator.GT, Operator.LT})
+
+# Operadores de conjunto sobre columnas ARRAY (Postgres). Toman una lista del tipo del
+# elemento del array.
+ARRAY_OPERATORS: frozenset[Operator] = frozenset(
+    {Operator.CONTAINS_ANY, Operator.CONTAINS_ALL}
 )
 
 # Orden canónico de operadores para metadata determinista.
@@ -98,13 +132,18 @@ OPERATOR_ORDER: tuple[Operator, ...] = (
     Operator.CONTAINS,
     Operator.STARTS_WITH,
     Operator.ENDS_WITH,
+    Operator.GT,
     Operator.GTE,
+    Operator.LT,
     Operator.LTE,
     Operator.ON,
     Operator.BEFORE,
     Operator.AFTER,
     Operator.BETWEEN,
     Operator.IN,
+    Operator.NOT_IN,
+    Operator.CONTAINS_ANY,
+    Operator.CONTAINS_ALL,
     Operator.ISNULL,
 )
 
@@ -139,10 +178,6 @@ def normalize_operators(raw: Iterable[Operator | str]) -> frozenset[Operator]:
     return frozenset(result)
 
 
-def _is_enum(field_type: Any) -> bool:
-    return isinstance(field_type, type) and issubclass(field_type, Enum)
-
-
 def default_operators(field_type: type[Any]) -> frozenset[Operator]:
     """Operadores por defecto según el tipo escalar (autoría nativa de policy).
 
@@ -156,7 +191,7 @@ def default_operators(field_type: type[Any]) -> frozenset[Operator]:
         return frozenset({Operator.EQ})
     if field_type is UUID:
         return frozenset({Operator.EQ, Operator.IN})
-    if _is_enum(field_type):
+    if is_enum_type(field_type):
         return frozenset({Operator.EQ, Operator.IN})
     if field_type in (int, Decimal):
         return frozenset({Operator.EQ, Operator.GTE, Operator.LTE})

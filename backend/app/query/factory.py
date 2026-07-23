@@ -14,7 +14,9 @@ from sqlalchemy.orm.properties import ColumnProperty
 from sqlalchemy.sql.elements import ColumnElement
 
 from backend.app.query.identity import IdentitySpec
+from backend.app.query.annotations import is_enum_type, unwrap_annotated
 from backend.app.query.operators import (
+    ARRAY_OPERATORS,
     Operator,
     between_parameter_names,
     parameter_name_for,
@@ -27,7 +29,7 @@ from backend.app.query.plans import (
     build_filter_parameters,
 )
 from backend.app.query.policies import QueryPolicy
-from backend.app.query.search import IlikeSearch
+from backend.app.query.search import IlikeSearch, SearchStrategy, strategy_for
 from backend.app.query.schema import OffsetQuerySchema
 from backend.app.query.validation import fail_config
 
@@ -54,6 +56,19 @@ EQUALITY_TYPES = (str, EmailStr, UUID, bool)
 _DATE_SINGLE_OPERATORS = (Operator.ON, Operator.BEFORE, Operator.AFTER)
 # Operadores de coincidencia parcial de texto (ILIKE escapado, case-insensitive).
 _TEXT_MATCH_ORDER = (Operator.CONTAINS, Operator.STARTS_WITH, Operator.ENDS_WITH)
+# Operadores de conjunto sobre columnas ARRAY, en orden canónico.
+_ARRAY_OPERATOR_ORDER = (Operator.CONTAINS_ANY, Operator.CONTAINS_ALL)
+
+
+@dataclass(frozen=True)
+class _ArrayType:
+    """Marcador del tipo de un campo ARRAY (lista): recuerda el tipo del elemento.
+
+    Un campo ARRAY solo admite operadores de array (``contains_any``/``contains_all``);
+    nunca ``eq``/rango/``in``/búsqueda. Se resuelve desde una anotación ``list[X]`` del
+    schema y su columna ORM es un ``ARRAY`` de Postgres."""
+
+    element_type: type[Any]
 
 
 def make_offset_query_schema(
@@ -101,7 +116,7 @@ def compile_list_query(
 
     for field_name in requested_fields:
         field_info = resource_schema.model_fields[field_name]
-        field_type = _compatible_scalar_type(field_name, field_info.annotation)
+        field_type = _compatible_field_type(field_name, field_info.annotation)
         all_columns[field_name] = _resolve_column(orm_model, field_name, query_options)
         field_types[field_name] = field_type
 
@@ -124,6 +139,7 @@ def compile_list_query(
 
     for field_name in query_options.filter_fields:
         field_type = field_types[field_name]
+        _require_scalar_field(field_name, field_type, "filter_fields")
         column = all_columns[field_name]
 
         field_definitions[field_name] = _optional_filter_field(field_type, query_options)
@@ -139,7 +155,15 @@ def compile_list_query(
     # se añade sola al conjunto público (era la deuda 2): vive en los tie-breakers
     # y en el conjunto orderable del default del servidor.
     if query_options.sort_fields is None:
-        sort_columns.update(all_columns)
+        # Modo derivado: todos los campos consultables son ordenables, EXCEPTO los ARRAY
+        # (ordenar por columna array no es una operación de lista con sentido de UI).
+        sort_columns.update(
+            {
+                name: column
+                for name, column in all_columns.items()
+                if not isinstance(field_types.get(name), _ArrayType)
+            }
+        )
     else:
         for field_name in query_options.sort_fields:
             sort_columns[field_name] = all_columns[field_name]
@@ -166,6 +190,7 @@ def compile_list_query(
                 operators=frozenset(operators),
                 field_definitions=field_definitions,
                 max_filter_text_length=query_options.max_filter_text_length,
+                max_in_values=query_options.max_in_values,
             )
         )
 
@@ -215,6 +240,7 @@ def compile_list_query(
         max_filter_text_length=query_options.max_filter_text_length,
         extended_filters=tuple(extended_filters),
         calendar_timezone=_application_timezone(),
+        search_strategy=strategy_for(query_options.search_mode),
     )
 
 
@@ -268,6 +294,7 @@ def compile_list_query_from_policy(
                 operators=spec.operators,
                 field_definitions=field_definitions,
                 max_filter_text_length=policy.limits.max_filter_text_length,
+                max_in_values=policy.limits.max_in_values,
             )
         )
         if spec.searchable:
@@ -337,9 +364,14 @@ def compile_list_query_from_policy(
         max_filter_text_length=policy.limits.max_filter_text_length,
         extended_filters=tuple(extended_filters),
         calendar_timezone=_application_timezone(),
+        search_strategy=strategy_for(policy.search.mode),
     )
 
 
+
+# --------------------------------------------------------------------------
+# Construcción del par (schema de query params, CompiledQueryPlan)
+# --------------------------------------------------------------------------
 def _build_compiled(
     *,
     name: str,
@@ -361,6 +393,7 @@ def _build_compiled(
     max_filter_text_length: int,
     extended_filters: tuple[CompiledExtendedFilter, ...] = (),
     calendar_timezone: str = "UTC",
+    search_strategy: SearchStrategy | None = None,
 ) -> CompiledListQuery:
     """Ensamblado compartido: crea el schema Pydantic, fija ``__query_*__`` (ruta
     heredada / fallback) y construye el ``CompiledQueryPlan``."""
@@ -411,7 +444,7 @@ def _build_compiled(
         tie_breakers=tie_breakers,
         default_order=query_schema.model_fields["sort"].default,
         identity=IdentitySpec(columns=primary_keys),
-        search_strategy=IlikeSearch(),
+        search_strategy=search_strategy if search_strategy is not None else IlikeSearch(),
         search_columns=search_columns,
         primary_keys=primary_keys,
         max_sort_terms=max_sort_terms,
@@ -442,6 +475,10 @@ def _optional_filter_field_with_limit(field_type: type[Any], max_filter_text_len
     return (field_type | None, None)
 
 
+
+# --------------------------------------------------------------------------
+# Registro de parámetros de filtro (in / isnull / operadores extendidos)
+# --------------------------------------------------------------------------
 def _register_in_filters(
     field_definitions: dict[str, tuple[Any, Any]],
     columns: dict[str, ColumnElement[Any] | InstrumentedAttribute[Any]],
@@ -451,6 +488,7 @@ def _register_in_filters(
     in_fields: set[str] = set()
     for field_name in options.in_fields:
         _require_filterable_field(field_name, columns, "in")
+        _require_scalar_field(field_name, field_types[field_name], "in_fields")
         generated = f"{field_name}_in"
         _guard_generated_collision(generated, field_definitions)
         field_definitions[generated] = (
@@ -479,22 +517,54 @@ def _register_null_filters(
 def _register_extended_filters(
     *,
     field_name: str,
-    field_type: type[Any],
+    field_type: Any,
     column: ColumnElement[Any] | InstrumentedAttribute[Any],
     operators: frozenset[Operator] | set[Operator],
     field_definitions: dict[str, tuple[Any, Any]],
     max_filter_text_length: int,
+    max_in_values: int,
 ) -> list[CompiledExtendedFilter]:
     """Genera los parámetros de query y los descriptores compilados de los operadores
-    extendidos de C1 (texto y fecha) presentes en ``operators``.
+    extendidos presentes en ``operators``.
 
     Fuente única: ``operators`` ya fusiona las listas declarativas y
-    ``field_operators``. Solo procesa el subconjunto de C1
-    (``ne/contains/starts_with/ends_with/on/before/after/between``); ``eq/gte/lte/in/
-    isnull`` los registran las rutas existentes. Valida el tipo por operador y falla en
-    config (no en runtime) ante un operador incompatible con el tipo del campo.
+    ``field_operators``. Procesa el subconjunto extendido — texto
+    (``ne/contains/starts_with/ends_with``), comparación estricta (``gt/lt``), fecha de
+    calendario (``on/before/after/between``), el ``between`` numérico/``date`` y los
+    operadores de lista (``not_in``) y de array (``contains_any/contains_all``);
+    ``eq/gte/lte/in/isnull`` los registran las rutas existentes. Valida el tipo por
+    operador y falla en config (no en runtime) ante un operador incompatible.
     """
     descriptors: list[CompiledExtendedFilter] = []
+
+    # --- Campos ARRAY: solo operadores de array; nada de eq/rango/in/texto/fecha. ---
+    if isinstance(field_type, _ArrayType):
+        non_array = set(operators) - ARRAY_OPERATORS
+        if non_array:
+            _fail(
+                "unsupported_operator_for_type",
+                f"El campo lista '{field_name}' solo admite operadores de array "
+                "(contains_any/contains_all).",
+            )
+        for operator in _ARRAY_OPERATOR_ORDER:
+            if operator not in operators:
+                continue
+            generated = parameter_name_for(field_name, operator)
+            _guard_generated_collision(generated, field_definitions)
+            field_definitions[generated] = (
+                list[field_type.element_type] | None,
+                Field(default=None, min_length=1, max_length=max_in_values),
+            )
+            descriptors.append(
+                CompiledExtendedFilter(field_name, operator, column, parameter_name=generated)
+            )
+        return descriptors
+
+    if operators & ARRAY_OPERATORS:
+        _fail(
+            "unsupported_operator_for_type",
+            f"Los operadores de array requieren un campo lista: '{field_name}'.",
+        )
 
     # not_equals: complemento lógico de equals sobre valores no nulos. Aplica a
     # cualquier escalar soportado (mismo dominio que eq); el null se gestiona solo con
@@ -507,6 +577,18 @@ def _register_extended_filters(
         )
         descriptors.append(
             CompiledExtendedFilter(field_name, Operator.NE, column, parameter_name=generated)
+        )
+
+    # not_in: complemento de ``in`` (lista de valores del tipo del campo).
+    if Operator.NOT_IN in operators:
+        generated = parameter_name_for(field_name, Operator.NOT_IN)
+        _guard_generated_collision(generated, field_definitions)
+        field_definitions[generated] = (
+            list[field_type] | None,
+            Field(default=None, min_length=1, max_length=max_in_values),
+        )
+        descriptors.append(
+            CompiledExtendedFilter(field_name, Operator.NOT_IN, column, parameter_name=generated)
         )
 
     # contains / starts_with / ends_with: solo texto (ILIKE escapado, case-insensitive).
@@ -525,6 +607,23 @@ def _register_extended_filters(
             CompiledExtendedFilter(field_name, operator, column, parameter_name=generated)
         )
 
+    # gt / lt: comparación estricta directa. Solo tipos de rango (numérico/fecha).
+    for operator in (Operator.GT, Operator.LT):
+        if operator not in operators:
+            continue
+        if not _supports_range(field_type):
+            _fail(
+                "unsupported_operator_for_type",
+                f"El operador '{operator.value}' requiere un campo numérico o de fecha: "
+                f"'{field_name}'.",
+            )
+        generated = parameter_name_for(field_name, operator)
+        _guard_generated_collision(generated, field_definitions)
+        field_definitions[generated] = (field_type | None, None)
+        descriptors.append(
+            CompiledExtendedFilter(field_name, operator, column, parameter_name=generated)
+        )
+
     # on / before / after: solo columnas datetime (semántica de día de calendario).
     for operator in _DATE_SINGLE_OPERATORS:
         if operator not in operators:
@@ -538,21 +637,30 @@ def _register_extended_filters(
         _guard_generated_collision(generated, field_definitions)
         field_definitions[generated] = (date | None, None)
         descriptors.append(
-            CompiledExtendedFilter(field_name, operator, column, parameter_name=generated)
+            CompiledExtendedFilter(field_name, operator, column, parameter_name=generated, calendar=True)
         )
 
-    # between: dos parámetros (_from, _to), ambos inclusivos para el usuario.
+    # between: dos parámetros (_from, _to), ambos inclusivos para el usuario. Polimórfico
+    # por tipo: ``datetime`` usa límites de día de calendario (parámetros ``date``);
+    # numérico/``date`` compara los extremos directamente (parámetros del tipo del campo).
     if Operator.BETWEEN in operators:
-        if not _is_calendar_type(field_type):
-            _fail(
-                "unsupported_operator_for_type",
-                f"El operador 'between' requiere un campo datetime: '{field_name}'.",
-            )
         from_param, to_param = between_parameter_names(field_name)
         _guard_generated_collision(from_param, field_definitions)
         _guard_generated_collision(to_param, field_definitions)
-        field_definitions[from_param] = (date | None, None)
-        field_definitions[to_param] = (date | None, None)
+        if _is_calendar_type(field_type):
+            field_definitions[from_param] = (date | None, None)
+            field_definitions[to_param] = (date | None, None)
+            calendar = True
+        elif _supports_range(field_type):
+            field_definitions[from_param] = (field_type | None, None)
+            field_definitions[to_param] = (field_type | None, None)
+            calendar = False
+        else:
+            _fail(
+                "unsupported_operator_for_type",
+                f"El operador 'between' requiere un campo datetime, numérico o date: "
+                f"'{field_name}'.",
+            )
         descriptors.append(
             CompiledExtendedFilter(
                 field_name,
@@ -560,6 +668,7 @@ def _register_extended_filters(
                 column,
                 from_parameter=from_param,
                 to_parameter=to_param,
+                calendar=calendar,
             )
         )
 
@@ -578,6 +687,10 @@ def _require_filterable_field(
         )
 
 
+
+# --------------------------------------------------------------------------
+# Validación de la declaración (fail-fast al importar)
+# --------------------------------------------------------------------------
 def _validate_limits(options: QueryOptions) -> None:
     for field_name, value in (
         ("max_limit", options.max_limit),
@@ -654,8 +767,41 @@ def _validate_field_name(field_name: str) -> None:
         )
 
 
+
+# --------------------------------------------------------------------------
+# Resolución de tipos públicos y columnas ORM
+# --------------------------------------------------------------------------
+def _compatible_field_type(field_name: str, annotation: Any) -> Any:
+    """Tipo consultable de un campo: escalar, o ``_ArrayType`` para anotaciones
+    ``list[X]`` (columnas ARRAY). El array solo lo consumen los operadores de array;
+    el resto de rutas (eq/rango/in/búsqueda/sort) rechazan ``_ArrayType``.
+    """
+    unwrapped = _unwrap_optional(unwrap_annotated(annotation))
+    if get_origin(unwrapped) in (list, tuple, set, frozenset):
+        args = tuple(unwrap_annotated(arg) for arg in get_args(unwrapped))
+        if len(args) != 1:
+            _fail(
+                "unsupported_schema_field_type",
+                f"El campo lista '{field_name}' debe declarar un único tipo de elemento.",
+            )
+        element_type = _compatible_scalar_type(field_name, args[0])
+        return _ArrayType(element_type=element_type)
+    return _compatible_scalar_type(field_name, annotation)
+
+
+def _require_scalar_field(field_name: str, field_type: Any, context: str) -> None:
+    """Falla si un campo ARRAY se usa donde solo caben escalares (eq/rango/in/búsqueda/
+    sort). Los arrays solo se consultan con operadores de array (``field_operators``)."""
+    if isinstance(field_type, _ArrayType):
+        _fail(
+            "unsupported_schema_field_type",
+            f"El campo lista '{field_name}' no admite '{context}': usa un tipo ARRAY, "
+            "solo consultable con operadores de array (contains_any/contains_all).",
+        )
+
+
 def _compatible_scalar_type(field_name: str, annotation: Any) -> type[Any]:
-    field_type = _unwrap_optional(_unwrap_annotated(annotation))
+    field_type = _unwrap_optional(unwrap_annotated(annotation))
     origin = get_origin(field_type)
 
     if origin is not None:
@@ -676,7 +822,7 @@ def _compatible_scalar_type(field_name: str, annotation: Any) -> type[Any]:
             f"El campo '{field_name}' usa un schema anidado no soportado.",
         )
 
-    if _is_enum(field_type) or field_type in EQUALITY_TYPES or field_type in RANGE_TYPES:
+    if is_enum_type(field_type) or field_type in EQUALITY_TYPES or field_type in RANGE_TYPES:
         return cast(type[Any], field_type)
 
     _fail(
@@ -685,19 +831,12 @@ def _compatible_scalar_type(field_name: str, annotation: Any) -> type[Any]:
     )
 
 
-def _unwrap_annotated(annotation: Any) -> Any:
-    value = annotation
-    while get_origin(value) is Annotated:
-        value = get_args(value)[0]
-    return value
-
-
 def _unwrap_optional(annotation: Any) -> Any:
     origin = get_origin(annotation)
     if origin not in (Union, UnionType):
         return annotation
 
-    args = tuple(_unwrap_annotated(arg) for arg in get_args(annotation) if arg is not type(None))
+    args = tuple(unwrap_annotated(arg) for arg in get_args(annotation) if arg is not type(None))
     if len(args) == 1:
         return args[0]
     return annotation
@@ -750,6 +889,10 @@ def _search_column(
     return columns[field_name]
 
 
+
+# --------------------------------------------------------------------------
+# Orden: sort por defecto, claves primarias y desempate
+# --------------------------------------------------------------------------
 def _primary_key_columns(orm_model: type[Any]) -> tuple[ColumnElement[Any], ...]:
     mapper = cast(Mapper[Any], inspect(orm_model))
     primary_keys = tuple(mapper.primary_key)
@@ -842,12 +985,12 @@ def _primary_key_names(primary_keys: tuple[ColumnElement[Any], ...]) -> tuple[st
     return tuple(names)
 
 
+
+# --------------------------------------------------------------------------
+# Predicados de tipo y error de configuración
+# --------------------------------------------------------------------------
 def _supports_range(field_type: type[Any]) -> bool:
     return field_type in RANGE_TYPES
-
-
-def _is_enum(field_type: Any) -> bool:
-    return isinstance(field_type, type) and issubclass(field_type, Enum)
 
 
 def _is_text_type(field_type: Any) -> bool:

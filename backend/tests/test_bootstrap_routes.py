@@ -51,7 +51,6 @@ BASE_SETTINGS = {
     "access_token_expire_minutes": 30,
     "email_token_expire_minutes": 30,
     "trys_before_lock": 5,
-    "trusted_browser_origins": "https://app.example.com",
     "redis_host": "r",
     "redis_port": 6379,
     "redis_db": 0,

@@ -1,4 +1,4 @@
-"""``RowSerializer``: cómo se obtienen y serializan las filas (Fase 2, Paso 5).
+"""``RowSerializer``: cómo se obtienen y serializan las filas.
 
 Default ``EntitySerializer`` (entidades ORM). ``ProjectionSerializer`` para
 ``select`` de columnas; ``CustomSerializer`` para casos arbitrarios. Cada

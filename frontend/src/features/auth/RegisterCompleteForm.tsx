@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { FieldError } from "@/components/ui/FieldError";
 import { Input } from "@/components/ui/Input";
-import { AuthAlert, AuthLabel } from "@/features/auth/PublicAuthShell";
+import { AuthAlert, AuthLabel } from "@/features/auth/auth-pieces";
 import { ApiRequestError } from "@/core/api/api-error";
 import { mapAuthFieldErrors, type AuthFieldErrors } from "@/core/auth/public-auth";
 import { completeRegistration } from "@/core/auth/public-auth-client";

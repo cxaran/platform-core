@@ -1,4 +1,4 @@
-"""``IdentitySpec``: expresiones que identifican un recurso único (Fase 2, Paso 5).
+"""``IdentitySpec``: expresiones que identifican un recurso único.
 
 Default: las columnas de la primary key. Lo usa el conteo distinto
 (``DistinctIdentityCount``). Para proyecciones/agregados sin PK accesible debe

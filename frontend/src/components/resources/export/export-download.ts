@@ -44,10 +44,12 @@ export async function fetchAllRows({
       { ...baseQuery, limit, offset },
       controls,
     );
-    total = page.pagination.total;
     rows.push(...(page.items as Record<string, unknown>[]));
+    // Feeds sin total (``NoTotalCount``): ``total`` es null — se usa el número de filas
+    // ya traídas como objetivo móvil de progreso y se corta por página corta / has_next.
+    total = page.pagination.total ?? rows.length;
     onProgress?.(Math.min(rows.length, total), Math.min(total, cap));
-    if (page.items.length < limit || rows.length >= total) {
+    if (page.items.length < limit || !page.pagination.has_next) {
       break;
     }
     offset += page.items.length;

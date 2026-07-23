@@ -1,7 +1,9 @@
-"""``CountStrategy``: cómo se calcula ``total`` (Fase 2, Paso 5).
+"""``CountStrategy``: cómo se calcula ``total``.
 
-Todas reciben el statement YA filtrado (sin ORDER BY/OFFSET/LIMIT). ``NoTotalCount``
-(feeds sin total) queda para Fase 8.
+Todas reciben el statement YA filtrado (sin ORDER BY/OFFSET/LIMIT). ``NoTotalCount`` es
+el modo sin total: no ejecuta ``COUNT(*)`` y el executor resuelve ``has_next`` por
+sobre-lectura (pide una fila de más). Es para feeds grandes (p. ej. la bitácora
+append-only) donde contar en cada página es caro y el total exacto no aporta.
 """
 
 from typing import Any, Callable, Protocol
@@ -14,6 +16,17 @@ from backend.app.query.plans import CompiledQueryPlan
 
 class CountStrategy(Protocol):
     def count(self, session: Session, filtered: Select[Any], plan: CompiledQueryPlan) -> int: ...
+
+
+class NoTotalCount:
+    """Modo sin total: no cuenta. El executor lo detecta y pagina por sobre-lectura
+    (``limit + 1``), dejando ``total`` en ``None`` y ``has_next`` derivado del exceso.
+
+    ``count`` existe solo para satisfacer el ``Protocol``; nunca se invoca (el executor
+    ramifica antes con ``isinstance``). Devuelve ``0`` de forma inocua si se llamara."""
+
+    def count(self, session: Session, filtered: Select[Any], plan: CompiledQueryPlan) -> int:
+        return 0
 
 
 class AutomaticCount:

@@ -216,7 +216,7 @@ async def generate_encryption_key(
     except BackupCryptoError as error:
         api_error(status.HTTP_409_CONFLICT, error.code, error.summary)
     except backups.BackupPermanentError as error:
-        # Sin BACKUP_TOKEN_ENCRYPTION_KEY no hay dónde guardar la identidad cifrada.
+        # Sin APP_ENCRYPTION_KEY no hay dónde guardar la identidad cifrada.
         api_error(status.HTTP_409_CONFLICT, error.code, error.summary)
     record_config_change(
         session,

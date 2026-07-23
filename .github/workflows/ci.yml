@@ -129,7 +129,7 @@ jobs:
       - name: Suites de frontend
         run: |
           npm run test:bootstrap && npm run test:actions && npm run test:public-auth
-          npm run test:filters && npm run test:push && npm run test:list-query
+          npm run test:filters && npm run test:push && npm run test:api && npm run test:analytics && npm run test:list-query
           npm run test:detail-view && npm run test:resource-form && npm run test:export-rows
           npm run test:checklist && npm run test:backups && npm run test:agent
       - run: npm run build

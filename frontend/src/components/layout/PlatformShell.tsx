@@ -7,7 +7,6 @@ import { usePathname } from "next/navigation";
 import { AccountMenu } from "@/components/layout/AccountMenu";
 import { NotificationsBell } from "@/components/layout/NotificationsBell";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
-import { AnimatedOrb } from "@/components/ui/AnimatedOrb";
 import type { ResourceCatalog as ResourceCatalogType } from "@/core/api/contracts";
 import type { SessionUser } from "@/core/auth/types";
 
@@ -41,10 +40,14 @@ function deriveTitle(pathname: string, resources: ResourceCatalogType): string {
 export function PlatformShell({
   session,
   resources,
+  brandName = "Platform Core",
+  brandLogoUrl = null,
   children,
 }: Readonly<{
   session: SessionUser;
   resources: ResourceCatalogType;
+  brandName?: string;
+  brandLogoUrl?: string | null;
   children: React.ReactNode;
 }>) {
   const pathname = usePathname();
@@ -73,8 +76,11 @@ export function PlatformShell({
       />
       <aside className="mc-sidebar z-40 flex w-64 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--panel)]">
         <Link href="/" className="flex items-center gap-3 px-5 py-4" onClick={() => setNavOpen(false)}>
-          <AnimatedOrb size={30} />
-          <span className="text-base font-semibold tracking-tight">Platform Core</span>
+          {brandLogoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element -- binario dinámico del backend
+            <img src={brandLogoUrl} alt="" className="h-[30px] w-[30px] object-contain" />
+          ) : null}
+          <span className="text-base font-semibold tracking-tight">{brandName}</span>
         </Link>
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-2" aria-label="Recursos">
           <Link

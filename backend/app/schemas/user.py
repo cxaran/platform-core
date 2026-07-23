@@ -2,9 +2,10 @@ import uuid
 from datetime import datetime
 from typing import Optional, Set
 
-from pydantic import EmailStr, Field, SecretStr
+from pydantic import EmailStr, Field, SecretStr, field_validator, model_validator
+from typing_extensions import Self
 
-from backend.app.schemas.base import ApiPatchSchema, ApiReadSchema
+from backend.app.schemas.base import ApiReadSchema
 
 
 # Usuario autenticado en sesión (no es un XBase de dominio: lleva permisos y la
@@ -43,23 +44,9 @@ class UserListItem(ApiReadSchema):
     created_at: datetime
 
 
-class UserUpdate(ApiPatchSchema):
-    """Actualización parcial de un usuario (PATCH)."""
-
-    name: Optional[str] = Field(default=None, min_length=4, max_length=50)
-    last_name: Optional[str] = Field(default=None, min_length=4, max_length=50)
-    email: Optional[EmailStr] = None
-    is_active: Optional[bool] = None
-
-
-
-# Auxiliar para validar la contraseña
 def validate_password(password: SecretStr) -> SecretStr:
     """Valida que la contraseña cumpla reglas de seguridad."""
     pw = password.get_secret_value()
-
-    # if not any(c.isupper() for c in pw):
-    #     raise ValueError("La contraseña debe contener al menos una letra mayúscula")
 
     if not any(c.islower() for c in pw):
         raise ValueError("La contraseña debe contener al menos una letra minúscula")
@@ -68,5 +55,33 @@ def validate_password(password: SecretStr) -> SecretStr:
         raise ValueError("La contraseña debe contener al menos un número")
 
     return password
+
+
+class PasswordConfirmMixin:
+    """Valida el par ``password``/``confirm_password`` de un schema de escritura.
+
+    Los campos se declaran en el schema (el mixin solo aporta los validadores,
+    por eso ``check_fields=False``): reglas de seguridad + coincidencia.
+    """
+
+    @field_validator("password", check_fields=False)
+    def _password_rules(cls, value: SecretStr) -> SecretStr:
+        return validate_password(value)
+
+    @model_validator(mode="after")
+    def _passwords_match(self) -> Self:
+        if self.password != self.confirm_password:  # type: ignore[attr-defined]
+            raise ValueError("Las contraseñas no coinciden")
+        return self
+
+
+class PersonNameMixin:
+    """Rechaza ``name``/``last_name`` de solo espacios (min_length no lo cubre)."""
+
+    @field_validator("name", "last_name", check_fields=False)
+    def _names_not_empty(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("El nombre y apellido no pueden estar vacíos")
+        return value
 
 

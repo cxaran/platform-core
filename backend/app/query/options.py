@@ -5,6 +5,7 @@ from sqlalchemy.orm.attributes import InstrumentedAttribute
 from sqlalchemy.sql.elements import ColumnElement
 
 from backend.app.query.operators import Operator
+from backend.app.query.search import SearchMode
 
 if TYPE_CHECKING:
     from backend.app.query.policies import QueryPolicy
@@ -34,8 +35,8 @@ class QueryOptions:
     search_fields: tuple[str, ...] = ()
     in_fields: tuple[str, ...] = ()
     null_filter_fields: tuple[str, ...] = ()
-    # Fuente declarativa única de operadores extendidos por campo (texto y fecha de
-    # C1: ne/contains/starts_with/ends_with/on/before/after/between). No es una
+    # Fuente declarativa única de operadores extendidos por campo (texto y fecha:
+    # ne/contains/starts_with/ends_with/on/before/after/between). No es una
     # allowlist paralela: se fusiona con los operadores derivados de las listas
     # anteriores en una sola declaración por campo (ver policies.policy_from_options).
     field_operators: Mapping[str, tuple[Operator, ...]] = field(
@@ -52,6 +53,9 @@ class QueryOptions:
     # eran constantes (2/100); configurables por recurso igual que el resto de límites.
     search_min_length: int = 2
     search_max_length: int = 100
+    # Estrategia de la búsqueda global ``q``. ``ILIKE`` (default) es portable; ``UNACCENT``
+    # y ``TRIGRAM`` requieren extensiones Postgres (unaccent / pg_trgm).
+    search_mode: SearchMode = SearchMode.ILIKE
 
     def to_policy(self, resource_schema: type[Any], orm_model: type[Any]) -> "QueryPolicy":
         """Traduce esta ``QueryOptions`` (API operativa) a una ``QueryPolicy``

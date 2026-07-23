@@ -1,13 +1,9 @@
 """Cifrado simétrico de SECRETOS de configuración en reposo (Fernet).
 
-CLAVE MAESTRA ÚNICA con transición suave: se ESCRIBE siempre con la primaria
-(``APP_ENCRYPTION_KEY``; si no está definida, cae a ``BACKUP_TOKEN_ENCRYPTION_KEY``
-para no romper despliegues previos) y se DESCIFRA probando la cadena completa
-(app → backup_token). El re-cifrado es PEREZOSO: como toda escritura usa la
-primaria, el material viejo migra de clave la próxima vez que su registro se
-reescribe — sin migración masiva ni ventana de indisponibilidad.
-
-Las claves viven SOLO en el entorno: nunca en la base de datos que cifran.
+Una sola clave maestra: ``APP_ENCRYPTION_KEY`` (obligatoria en producción).
+Cifra y descifra todos los secretos guardados en la base (SMTP, Resend, OAuth,
+refresh tokens de Drive, credenciales de proveedor de IA). La clave vive SOLO
+en el entorno: nunca en la base de datos que cifra.
 """
 
 from typing import Optional
@@ -24,34 +20,28 @@ class SecretCipherError(Exception):
         self.summary = summary
 
 
-def _candidate_keys() -> list[str]:
-    keys: list[str] = []
-    for secret in (
-        settings.app_encryption_key,
-        settings.backup_token_encryption_key,
-    ):
-        if secret is not None:
-            value = secret.get_secret_value()
-            if value and value not in keys:
-                keys.append(value)
-    return keys
+def _master_key() -> Optional[str]:
+    secret = settings.app_encryption_key
+    if secret is None:
+        return None
+    return secret.get_secret_value() or None
 
 
 def has_encryption_key() -> bool:
-    return bool(_candidate_keys())
+    return _master_key() is not None
 
 
-def _primary_fernet():
+def _fernet():
     from cryptography.fernet import Fernet
 
-    keys = _candidate_keys()
-    if not keys:
+    key = _master_key()
+    if key is None:
         raise SecretCipherError(
             "encryption_key_missing",
             "Configura APP_ENCRYPTION_KEY para guardar secretos cifrados.",
         )
     try:
-        return Fernet(keys[0].encode("utf-8"))
+        return Fernet(key.encode("utf-8"))
     except Exception as error:
         raise SecretCipherError(
             "encryption_key_invalid",
@@ -60,20 +50,20 @@ def _primary_fernet():
 
 
 def encrypt_secret(plaintext: str) -> str:
-    """Cifra SIEMPRE con la clave primaria (la primera de la cadena)."""
-    return _primary_fernet().encrypt(plaintext.encode("utf-8")).decode("utf-8")
+    """Cifra con la clave maestra y devuelve el token Fernet (texto)."""
+    return _fernet().encrypt(plaintext.encode("utf-8")).decode("utf-8")
 
 
 def decrypt_secret(ciphertext: str) -> Optional[str]:
-    """Descifra probando la CADENA de claves (transición entre claves maestras);
-    ``None`` si ninguna corresponde al material."""
+    """Descifra con la clave maestra; ``None`` si el material no corresponde."""
     from cryptography.fernet import Fernet, InvalidToken
 
-    for key in _candidate_keys():
-        try:
-            return Fernet(key.encode("utf-8")).decrypt(ciphertext.encode("utf-8")).decode("utf-8")
-        except (InvalidToken, ValueError):
-            continue
-        except Exception:
-            continue
-    return None
+    key = _master_key()
+    if key is None:
+        return None
+    try:
+        return Fernet(key.encode("utf-8")).decrypt(ciphertext.encode("utf-8")).decode("utf-8")
+    except (InvalidToken, ValueError):
+        return None
+    except Exception:
+        return None

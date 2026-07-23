@@ -25,6 +25,9 @@ TModel = TypeVar("TModel")
 TReadSchema = TypeVar("TReadSchema", bound=ApiReadSchema)
 
 
+# --------------------------------------------------------------------------
+# Errores HTTP y obtención segura (404/409/403 con el envelope estándar)
+# --------------------------------------------------------------------------
 def api_error(
     status_code: int,
     code: str,
@@ -124,35 +127,6 @@ def get_active_or_404(
     return entity
 
 
-def lock_for_update(session: Session, model: type[TModel], object_id: Any) -> TModel | None:
-    """Toma la fila con FOR UPDATE (serializa transiciones concurrentes); ``None`` si no existe."""
-    mapper = inspect(model)
-    assert mapper is not None  # todo modelo ORM registrado es inspeccionable
-    pk = mapper.primary_key[0]
-    stmt = select(model).where(pk == object_id).with_for_update()
-    return session.exec(stmt).first()
-
-
-def lock_active_or_404(
-    session: Session,
-    model: type[TModel],
-    object_id: Any,
-    message: str,
-    *,
-    code: str = "resource_not_found",
-    allowed_status: tuple[Any, ...] | None = None,
-    status_message: str | None = None,
-    status_code: str = "resource_state_conflict",
-) -> TModel:
-    """Variante bloqueante de :func:`get_active_or_404` (FOR UPDATE sobre la fila)."""
-    entity = lock_for_update(session, model, object_id)
-    if entity is None or getattr(entity, "deleted_at", None) is not None:
-        api_error(status.HTTP_404_NOT_FOUND, code, message)
-    if allowed_status is not None:
-        require_status(entity, allowed_status, status_message or message, code=status_code)
-    return entity
-
-
 def get_owned_or_404(
     session: Session,
     model: type[TModel],
@@ -174,6 +148,9 @@ def get_owned_or_404(
     return entity
 
 
+# --------------------------------------------------------------------------
+# Serialización a schemas de lectura
+# --------------------------------------------------------------------------
 def serialize(schema: type[TReadSchema], entity: Any) -> TReadSchema:
     return schema.model_validate(entity, from_attributes=True)
 
@@ -196,6 +173,9 @@ def serialize_with(
     return schema(**data)
 
 
+# --------------------------------------------------------------------------
+# Persistencia genérica CRUD (commit con conflictos traducidos a HTTP)
+# --------------------------------------------------------------------------
 def create_entity(
     session: Session,
     model: type[TModel],
@@ -315,6 +295,9 @@ def soft_delete_entity(
     return entity
 
 
+# --------------------------------------------------------------------------
+# Relaciones (reemplazo/lectura de colecciones hijas)
+# --------------------------------------------------------------------------
 def replace_to_many(
     session: Session,
     association_model: type[Any],

@@ -1,4 +1,9 @@
-"""Registra handlers globales que unifican el cuerpo de error de la API."""
+"""Registra handlers globales que unifican el cuerpo de error de la API.
+
+Los errores de validación viajan estructurados (``type`` + ``ctx`` por campo);
+la traducción a mensajes UX en español vive en el frontend
+(``src/core/api/validation-messages.ts``), aplicada en todas las llamadas.
+"""
 
 from typing import Any, Sequence
 
@@ -33,47 +38,16 @@ async def _query_parameter_error_handler(_: Request, exc: Exception) -> JSONResp
     return _error_response(status.HTTP_422_UNPROCESSABLE_CONTENT, exc.code, exc.message, errors)
 
 
-def _spanish_validation_message(error: dict[str, Any]) -> str:
-    """Traduce un error estructurado de Pydantic/FastAPI a un mensaje UX en español.
-
-    El backend sigue siendo la autoridad: solo se mapean *tipos estándar* conocidos
-    a partir de su ``ctx`` (constraints declaradas). Los mensajes de dominio (de
-    validadores ``ValueError``) ya vienen en español y se preservan. Los tipos
-    desconocidos usan un mensaje general seguro, sin filtrar texto interno en inglés.
-    """
-    error_type = str(error.get("type", ""))
-    ctx = error.get("ctx") or {}
-
-    if error_type == "missing":
-        return "Este campo es obligatorio."
-    if error_type == "string_too_short":
-        minimum = ctx.get("min_length")
-        return (
-            f"Debe tener al menos {minimum} caracteres."
-            if minimum is not None
-            else "El valor es demasiado corto."
-        )
-    if error_type == "string_too_long":
-        maximum = ctx.get("max_length")
-        return (
-            f"Debe tener como máximo {maximum} caracteres."
-            if maximum is not None
-            else "El valor es demasiado largo."
-        )
-    if error_type == "greater_than_equal":
-        return f"Debe ser mayor o igual a {ctx.get('ge')}."
-    if error_type == "less_than_equal":
-        return f"Debe ser menor o igual a {ctx.get('le')}."
-    if error_type == "greater_than":
-        return f"Debe ser mayor que {ctx.get('gt')}."
-    if error_type == "less_than":
-        return f"Debe ser menor que {ctx.get('lt')}."
-    if error_type == "value_error":
-        cleaned = str(error.get("msg", "")).removeprefix("Value error, ").strip()
-        if "valid email address" in cleaned.lower():
-            return "Correo electrónico inválido."
-        return cleaned or "El valor ingresado no es válido."
-    return "El valor ingresado no es válido."
+def _public_ctx(ctx: Any) -> dict[str, str | int | float | bool] | None:
+    """Constraints declaradas del error (min_length, ge, ...), solo primitivos."""
+    if not isinstance(ctx, dict):
+        return None
+    public = {
+        str(key): value
+        for key, value in ctx.items()
+        if isinstance(value, (str, int, float, bool))
+    }
+    return public or None
 
 
 async def _validation_error_handler(_: Request, exc: Exception) -> JSONResponse:
@@ -81,7 +55,9 @@ async def _validation_error_handler(_: Request, exc: Exception) -> JSONResponse:
     errors = [
         ErrorItem(
             field=_field_from_loc(error["loc"]),
-            message=_spanish_validation_message(error),
+            message=str(error.get("msg", "")),
+            type=str(error.get("type", "")) or None,
+            ctx=_public_ctx(error.get("ctx")),
         )
         for error in exc.errors()
     ]

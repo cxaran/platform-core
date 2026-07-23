@@ -67,3 +67,32 @@ self.addEventListener("notificationclick", (event) => {
     })(),
   );
 });
+
+/* iOS/Safari puede ROTAR o expirar la suscripción sin aviso: sin este handler el
+ * dispositivo deja de recibir en silencio. Se resuscribe con la MISMA clave y se
+ * re-registra en el backend (best-effort: exige sesión viva; si no, la campana
+ * re-deriva el estado en la próxima visita). */
+self.addEventListener("pushsubscriptionchange", (event) => {
+  event.waitUntil(
+    (async () => {
+      try {
+        const old = event.oldSubscription;
+        const key = old && old.options ? old.options.applicationServerKey : null;
+        if (!key) return;
+        const fresh = await self.registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: key,
+        });
+        const json = fresh.toJSON();
+        await fetch("/api/v1/notifications/push/subscription", {
+          method: "PUT",
+          credentials: "include",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys }),
+        });
+      } catch {
+        // best-effort
+      }
+    })(),
+  );
+});

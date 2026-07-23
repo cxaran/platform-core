@@ -5,7 +5,7 @@ import { FormEvent, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { FieldError } from "@/components/ui/FieldError";
 import { Input } from "@/components/ui/Input";
-import { AuthAlert, AuthLabel, AuthLink } from "@/features/auth/PublicAuthShell";
+import { AuthAlert, AuthLabel, AuthLink } from "@/features/auth/auth-pieces";
 import { ApiRequestError } from "@/core/api/api-error";
 import { publicAuthGeneralError } from "@/core/auth/public-auth";
 import { requestPasswordReset, requestRegistration } from "@/core/auth/public-auth-client";

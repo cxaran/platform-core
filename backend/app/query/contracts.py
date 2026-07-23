@@ -1,13 +1,33 @@
-"""``ListQueryContract``: abstracción principal de listado (Fase 2, Paso 3).
+"""``ListQueryContract``: el contrato de listado de un recurso.
 
-Une un modelo ORM, su schema de salida y el plan compilado (schema de query +
-``CompiledQueryPlan``). Acepta **exactamente una** fuente de configuración —
-``options`` o ``policy``— y siempre pasa el plan explícito al compiler/executor
-(no depende del fallback a ``__query_*__``).
+Une un modelo ORM, su schema de salida y la configuración de consulta, y compila
+(al importar) el schema de query params + el ``CompiledQueryPlan`` que consumen
+compiler/executor. Reglas:
 
-No crea rutas ni impone CRUD: la ruta manual sigue siendo dueña de URL, método,
-dependencias, permisos, tenant/scopes, joins y ``stmt`` base. ``paginate`` usa
-``select(model)`` solo como default.
+- La configuración llega por ``options`` (la API declarativa habitual) **o** por
+  ``policy`` (la forma canónica por campo); ambas a la vez es error de
+  configuración. Sin ninguna: options vacías (solo paginación + desempate por PK).
+- No crea rutas ni impone CRUD: la ruta manual sigue siendo dueña de URL, método,
+  dependencias, permisos, tenant/scopes, joins y ``stmt`` base. ``paginate`` usa
+  ``select(model)`` solo como default.
+
+``ResourceQuery`` es el alias establecido de esta clase (es el nombre que usan
+registry y routers). Ejemplo::
+
+    USERS = ResourceQuery(
+        name="UserQuery",
+        model=User,
+        schema=UserRead,
+        options=QueryOptions(search_fields=("name", "email")),
+    )
+
+    @router.get("", response_model=OffsetPage[UserRead])
+    def list_users(
+        session: SessionDep,
+        query: Annotated[USERS.Query, Query()],
+        _: UserPermissions.READ.requiere,
+    ) -> OffsetPage[UserRead]:
+        return USERS.paginate(session, query)
 """
 
 from dataclasses import replace
@@ -47,19 +67,21 @@ class ListQueryContract(Generic[TItem]):
         search_strategy: SearchStrategy | None = None,
         identity: IdentitySpec | None = None,
     ) -> None:
-        if (options is None) == (policy is None):
+        if options is not None and policy is not None:
             fail_config(
                 "ambiguous_query_config",
-                "Indique exactamente una fuente de configuración: options o policy, nunca ambas.",
+                "Indique una sola fuente de configuración: options o policy, nunca ambas.",
             )
 
-        if options is not None:
-            compiled = compile_list_query(
-                name=name, resource_schema=schema, orm_model=model, options=options
-            )
-        else:
-            assert policy is not None  # garantizado por el guard de fuente única
+        if policy is not None:
             compiled = compile_list_query_from_policy(name=name, orm_model=model, policy=policy)
+        else:
+            compiled = compile_list_query(
+                name=name,
+                resource_schema=schema,
+                orm_model=model,
+                options=options if options is not None else QueryOptions(),
+            )
 
         plan = compiled.plan
         # search_strategy/identity son compile-time: se incrustan en el plan.
@@ -85,6 +107,8 @@ class ListQueryContract(Generic[TItem]):
         *,
         stmt: Select[Any] | None = None,
     ) -> OffsetPage[TItem]:
+        """Pagina el recurso. Por defecto consulta ``select(model)``; se puede
+        pasar un ``stmt`` propio (p. ej. con joins o filtros de tenant)."""
         statement = stmt if stmt is not None else select(self.model)
         return paginate(
             session,
@@ -95,3 +119,7 @@ class ListQueryContract(Generic[TItem]):
             count_strategy=self.count_strategy,
             row_serializer=self.row_serializer,
         )
+
+
+# Alias establecido: registry, routers y helpers hablan de "ResourceQuery".
+ResourceQuery = ListQueryContract

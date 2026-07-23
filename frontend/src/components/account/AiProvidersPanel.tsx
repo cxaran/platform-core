@@ -14,10 +14,14 @@ import {
   AI_PROVIDER_LABELS,
   createAiCredential,
   deleteAiCredential,
+  disconnectOpenAiOAuth,
+  getOpenAiOAuthStatus,
   listAiCredentials,
+  startOpenAiOAuth,
   updateAiCredential,
   type AiProvider,
   type AiProviderCredential,
+  type OAuthStatusResponse,
 } from "@/core/agent/ai-providers-client";
 
 export function AiProvidersPanel() {
@@ -26,9 +30,19 @@ export function AiProvidersPanel() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [oauth, setOauth] = useState<OAuthStatusResponse | null>(null);
+  const [oauthPending, setOauthPending] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
+    void getOpenAiOAuthStatus()
+      .then((status) => {
+        if (!cancelled) setOauth(status);
+      })
+      .catch(() => {
+        // Flujo no configurado (503) o error transitorio: no se ofrece el bloque.
+        if (!cancelled) setOauth(null);
+      });
     void listAiCredentials()
       .then((rows) => {
         if (!cancelled) {
@@ -98,6 +112,37 @@ export function AiProvidersPanel() {
   const providerLabel = (provider: AiProvider): string =>
     AI_PROVIDER_LABELS.find(([value]) => value === provider)?.[1] ?? provider;
 
+  async function onConnectOAuth() {
+    if (oauthPending) return;
+    setOauthPending(true);
+    setError(null);
+    try {
+      const { authorize_url } = await startOpenAiOAuth();
+      // Redirige al proveedor; al volver, /account/oauth/callback completa el flujo.
+      window.location.href = authorize_url;
+    } catch {
+      setError("No se pudo iniciar la conexión con ChatGPT.");
+      setOauthPending(false);
+    }
+  }
+
+  async function onDisconnectOAuth() {
+    if (oauthPending) return;
+    if (!window.confirm("¿Desconectar la cuenta ChatGPT? El copiloto dejará de usar tu suscripción.")) {
+      return;
+    }
+    setOauthPending(true);
+    setError(null);
+    try {
+      await disconnectOpenAiOAuth();
+      setOauth({ connected: false });
+    } catch {
+      setError("No se pudo desconectar la cuenta.");
+    } finally {
+      setOauthPending(false);
+    }
+  }
+
   return (
     <section className="rounded-[14px] border border-[var(--border2)] bg-[var(--bg2)] p-5">
       <div className="flex items-center justify-between gap-2">
@@ -153,6 +198,38 @@ export function AiProvidersPanel() {
           </li>
         ))}
       </ul>
+
+      {oauth !== null ? (
+        <div className="mt-4 flex items-center gap-3 rounded-[11px] border border-[var(--border2)] bg-[var(--bg)] px-3 py-2.5 text-sm">
+          <div className="min-w-0 flex-1">
+            <p className="font-medium text-[var(--tx)]">Cuenta ChatGPT (suscripción)</p>
+            <p className="truncate text-xs text-[var(--tx3)]">
+              {oauth.connected
+                ? `Conectada${oauth.account_id ? ` · cuenta ${oauth.account_id}` : ""}`
+                : "Usa tu plan Plus/Pro en el copiloto, sin API key."}
+            </p>
+          </div>
+          {oauth.connected ? (
+            <button
+              type="button"
+              disabled={oauthPending}
+              className="rounded-[9px] border border-[var(--border2)] px-2.5 py-1.5 text-xs text-[var(--tx2)] transition hover:border-red-400 hover:text-red-500"
+              onClick={() => void onDisconnectOAuth()}
+            >
+              Desconectar
+            </button>
+          ) : (
+            <Button
+              type="button"
+              disabled={oauthPending}
+              className="!px-3 !py-2 !text-xs"
+              onClick={() => void onConnectOAuth()}
+            >
+              {oauthPending ? "Abriendo…" : "Conectar"}
+            </Button>
+          )}
+        </div>
+      ) : null}
 
       {showForm ? (
         <form className="mt-4 space-y-3" onSubmit={onCreate}>

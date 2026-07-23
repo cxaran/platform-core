@@ -2,7 +2,7 @@
 
 El administrador configura únicamente el recipient PÚBLICO (``age1...``); la identidad
 privada vive fuera del sistema (nunca se acepta, guarda ni loguea). El refresh token de
-Google NO se cifra aquí (eso es Fernet con BACKUP_TOKEN_ENCRYPTION_KEY, ver
+Google NO se cifra aquí (eso es Fernet con APP_ENCRYPTION_KEY, ver
 ``backup_service``). Todas las invocaciones usan ``subprocess.run`` con lista de
 argumentos y ``shell=False``.
 """

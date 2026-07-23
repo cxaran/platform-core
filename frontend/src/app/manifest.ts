@@ -36,7 +36,7 @@ export default async function manifest(): Promise<MetadataRoute.Manifest> {
   return {
     name,
     short_name: name.length > 24 ? name.slice(0, 24) : name,
-    description: "Plataforma base",
+    description: branding?.description || "Plataforma base",
     start_url: "/",
     scope: "/",
     display: "standalone",

@@ -262,6 +262,63 @@ class CalendarOperatorsTest(_RunnerMixin):
             self._run(created_at_from=date(2026, 6, 16), created_at_to=date(2026, 6, 14))
 
 
+class NumericOperatorsTest(_RunnerMixin):
+    """gt/lt estrictos, not_in y between numérico (comparación directa)."""
+
+    _OPTIONS = QueryOptions(
+        filter_fields=("quantity",),
+        in_fields=("quantity",),
+        field_operators={
+            "quantity": (Operator.GT, Operator.LT, Operator.NOT_IN, Operator.BETWEEN),
+        },
+    )
+
+    def setUp(self) -> None:
+        super().setUp()
+        now = datetime(2026, 1, 1, 0, 0)
+        self._seed(
+            [
+                Thing(id=1, name="a", quantity=1, created_at=now),
+                Thing(id=2, name="b", quantity=5, created_at=now),
+                Thing(id=3, name="c", quantity=10, created_at=now),
+                Thing(id=4, name="d", quantity=20, created_at=now),
+            ]
+        )
+
+    def test_gt_is_strict(self) -> None:
+        self.assertEqual(self._names(self._OPTIONS, quantity_gt=5), {"c", "d"})
+
+    def test_lt_is_strict(self) -> None:
+        self.assertEqual(self._names(self._OPTIONS, quantity_lt=10), {"a", "b"})
+
+    def test_not_in_excludes_listed_values(self) -> None:
+        self.assertEqual(self._names(self._OPTIONS, quantity_not_in=[5, 10]), {"a", "d"})
+
+    def test_value_between_is_inclusive_both_ends(self) -> None:
+        self.assertEqual(
+            self._names(self._OPTIONS, quantity_from=5, quantity_to=10), {"b", "c"}
+        )
+
+    def test_value_between_single_end(self) -> None:
+        self.assertEqual(self._names(self._OPTIONS, quantity_from=10), {"c", "d"})
+        self.assertEqual(self._names(self._OPTIONS, quantity_to=5), {"a", "b"})
+
+    def test_value_between_inverted_range_is_rejected(self) -> None:
+        with self.assertRaisesRegex(QueryParameterError, "invalid_range"):
+            self._names(self._OPTIONS, quantity_from=10, quantity_to=5)
+
+    def test_between_params_are_typed_not_date(self) -> None:
+        compiled = compile_list_query(
+            name="ExtThingQuery",
+            resource_schema=ThingRead,
+            orm_model=Thing,
+            options=self._OPTIONS,
+        )
+        # El between numérico genera parámetros del tipo del campo (int), no ``date``.
+        annotation = compiled.schema.model_fields["quantity_from"].annotation
+        self.assertIn(int, (annotation, *getattr(annotation, "__args__", ())))
+
+
 class AllowlistAndConfigTest(unittest.TestCase):
     def _compile(self, options: QueryOptions):
         return compile_list_query(
@@ -294,9 +351,18 @@ class AllowlistAndConfigTest(unittest.TestCase):
         with self.assertRaisesRegex(QuerySchemaConfigError, "unsupported_operator_for_type"):
             self._compile(QueryOptions(field_operators={"name": (Operator.ON,)}))
 
-    def test_calendar_between_on_non_datetime_field_fails_config(self) -> None:
+    def test_between_on_text_field_fails_config(self) -> None:
+        # ``between`` es polimórfico (datetime/numérico/date); sobre texto no aplica.
         with self.assertRaisesRegex(QuerySchemaConfigError, "unsupported_operator_for_type"):
-            self._compile(QueryOptions(field_operators={"quantity": (Operator.BETWEEN,)}))
+            self._compile(QueryOptions(field_operators={"name": (Operator.BETWEEN,)}))
+
+    def test_strict_comparison_on_text_field_fails_config(self) -> None:
+        with self.assertRaisesRegex(QuerySchemaConfigError, "unsupported_operator_for_type"):
+            self._compile(QueryOptions(field_operators={"name": (Operator.GT,)}))
+
+    def test_array_operator_on_scalar_field_fails_config(self) -> None:
+        with self.assertRaisesRegex(QuerySchemaConfigError, "unsupported_operator_for_type"):
+            self._compile(QueryOptions(field_operators={"name": (Operator.CONTAINS_ANY,)}))
 
 
 class _patch_timezone:

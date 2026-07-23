@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
-import { AuthAlert, AuthLink, PublicAuthShell } from "@/features/auth/PublicAuthShell";
+import { AuthAlert, AuthLink } from "@/features/auth/auth-pieces";
+import { PublicAuthShell } from "@/features/auth/PublicAuthShell";
 import { LoginForm } from "@/features/auth/LoginForm";
 import { getAuthPolicy } from "@/core/auth/policy-client";
 import { getSession } from "@/core/auth/session";

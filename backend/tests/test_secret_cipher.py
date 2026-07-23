@@ -1,7 +1,6 @@
 """Tests del cifrador de secretos de configuración (services/secret_cipher.py).
 
-Cubre la cadena de claves (escritura con la primaria, descifrado probando la
-cadena completa) y los errores de configuración. La instancia global de settings
+Cubre el roundtrip con la clave maestra única y los errores de configuración. La instancia global de settings
 se parcha por test: las claves viven solo en el entorno.
 """
 
@@ -44,17 +43,16 @@ from backend.app.services.secret_cipher import (  # noqa: E402
 )
 
 
-def _patched(app_key: str | None, backup_key: str | None):
+def _patched(app_key: str | None):
     return patch.multiple(
         secret_cipher.settings,
         app_encryption_key=SecretStr(app_key) if app_key else None,
-        backup_token_encryption_key=SecretStr(backup_key) if backup_key else None,
     )
 
 
 class SecretCipherTest(unittest.TestCase):
     def test_sin_clave_no_hay_cifrado(self) -> None:
-        with _patched(None, None):
+        with _patched(None):
             self.assertFalse(has_encryption_key())
             with self.assertRaises(SecretCipherError) as ctx:
                 encrypt_secret("hola")
@@ -62,39 +60,25 @@ class SecretCipherTest(unittest.TestCase):
             self.assertIsNone(decrypt_secret("material-invalido"))
 
     def test_clave_invalida_reporta_error_de_configuracion(self) -> None:
-        with _patched("no-es-fernet", None):
+        with _patched("no-es-fernet"):
             with self.assertRaises(SecretCipherError) as ctx:
                 encrypt_secret("hola")
             self.assertEqual(ctx.exception.code, "encryption_key_invalid")
 
     def test_roundtrip_con_clave_primaria(self) -> None:
         key = Fernet.generate_key().decode()
-        with _patched(key, None):
+        with _patched(key):
             self.assertTrue(has_encryption_key())
             ciphertext = encrypt_secret("secreto smtp")
             self.assertNotIn("secreto", ciphertext)
             self.assertEqual(decrypt_secret(ciphertext), "secreto smtp")
 
-    def test_material_viejo_descifra_con_clave_legada(self) -> None:
-        legacy = Fernet.generate_key().decode()
-        primary = Fernet.generate_key().decode()
-        with _patched(None, legacy):
-            old_ciphertext = encrypt_secret("token de drive")
-        with _patched(primary, legacy):
-            # El material cifrado con la legada sigue abriéndose...
-            self.assertEqual(decrypt_secret(old_ciphertext), "token de drive")
-            # ...pero toda ESCRITURA nueva usa la primaria (re-cifrado perezoso).
-            new_ciphertext = encrypt_secret("token de drive")
-        with _patched(primary, None):
-            self.assertEqual(decrypt_secret(new_ciphertext), "token de drive")
-            self.assertIsNone(decrypt_secret(old_ciphertext))
-
     def test_material_ajeno_devuelve_none(self) -> None:
         key = Fernet.generate_key().decode()
         other = Fernet.generate_key().decode()
-        with _patched(other, None):
+        with _patched(other):
             foreign = encrypt_secret("de otra instalación")
-        with _patched(key, None):
+        with _patched(key):
             self.assertIsNone(decrypt_secret(foreign))
 
 

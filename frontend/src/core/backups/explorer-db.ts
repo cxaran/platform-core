@@ -3,7 +3,7 @@
 // navegador; los tests usan un fake) y sólo conoce el CONTRATO del artefacto: las
 // tablas __mp_meta/__mp_tables/__mp_columns/__mp_relations y los identificadores
 // seguros t_<hash>/c_<posición> que genera el backend. Sin fetch, sin React, sin
-// conocimiento del esquema clínico: todo se descubre de la metadata del archivo.
+// conocimiento del esquema del dominio: todo se descubre de la metadata del archivo.
 
 /** Resultado de sql.js `db.exec`: columnas + filas posicionales. */
 export interface ExecResult {

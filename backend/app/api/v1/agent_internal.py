@@ -8,14 +8,21 @@ El secreto descifrado y el secreto interno NUNCA se loguean.
 """
 
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Header, Request, status
 from sqlmodel import select
 
 import secrets as secrets_lib
 
-from backend.app.agent.crypto import decrypt_secret
+from backend.app.agent.oauth import (
+    OAuthError,
+    decode_oauth_profile,
+    encode_oauth_profile,
+    ensure_fresh_access_token,
+    profile_expires_at,
+)
+from backend.app.services.secret_cipher import decrypt_secret
 from backend.app.api.resource_actions import api_error
 from backend.app.core.database import SessionDep
 from backend.app.core.settings import settings
@@ -73,19 +80,50 @@ def lease_credential(
             "No hay credencial activa para ese usuario y proveedor.",
         )
 
-    # v1: solo credenciales API key. OAuth queda reservado para una rebanada posterior.
-    if credential.credential_type != AiCredentialType.API_KEY:
-        api_error(
-            status.HTTP_501_NOT_IMPLEMENTED,
-            "credential_type_unsupported",
-            "El arriendo de credenciales OAuth aún no está implementado.",
-        )
-
     from backend.app.services.system_settings_service import agent_lease_ttl_effective
 
     lease_id = uuid.uuid4()
-    expires_at = utc_now() + timedelta(seconds=agent_lease_ttl_effective(session))
-    secret = decrypt_secret(credential.secret_encrypted)
+    ttl_expires_at = utc_now() + timedelta(seconds=agent_lease_ttl_effective(session))
+    account_id: str | None = None
+
+    if credential.credential_type == AiCredentialType.OAUTH:
+        # Credencial OAuth (ChatGPT Plus/Codex): el "secreto" arrendado es el ACCESS
+        # token vigente; se refresca si venció o está por vencer y se reguarda cifrado.
+        try:
+            profile = decode_oauth_profile(credential.secret_encrypted)
+            fresh_profile, refreshed = ensure_fresh_access_token(profile)
+        except OAuthError as exc:
+            api_error(status.HTTP_502_BAD_GATEWAY, exc.code, exc.message)
+        if refreshed:
+            credential.secret_encrypted = encode_oauth_profile(fresh_profile)
+            credential.updated_at = utc_now()
+        access = fresh_profile.get("access")
+        if not isinstance(access, str) or not access:
+            api_error(
+                status.HTTP_502_BAD_GATEWAY,
+                "oauth_no_access_token",
+                "La conexión OAuth no tiene un access token disponible.",
+            )
+        secret = access
+        # La cuenta ChatGPT (no secreta) viaja al Gateway para el header chatgpt-account-id.
+        profile_account = fresh_profile.get("account_id")
+        account_id = profile_account if isinstance(profile_account, str) else None
+        # El arriendo no debe sobrevivir al access token: se toma el menor vencimiento.
+        token_expires_at = profile_expires_at(fresh_profile)
+        expires_at = (
+            min(ttl_expires_at, token_expires_at)
+            if isinstance(token_expires_at, datetime)
+            else ttl_expires_at
+        )
+    else:
+        secret = decrypt_secret(credential.secret_encrypted)
+        if secret is None:
+            api_error(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "credential_undecryptable",
+                "La credencial guardada no puede descifrarse con las claves configuradas.",
+            )
+        expires_at = ttl_expires_at
 
     # Auditoría del arriendo: registra el evento SIN el secreto.
     session.add(
@@ -104,5 +142,5 @@ def lease_credential(
         secret=secret,
         expires_at=expires_at,
         default_model=credential.default_model,
-        account_id=None,
+        account_id=account_id,
     )

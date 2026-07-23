@@ -28,11 +28,9 @@ from dataclasses import dataclass
 from typing import Optional, cast
 from urllib.parse import urlencode
 
-from fastapi import Request
 from sqlmodel import Session, select
 
 from backend.app.core.redis import RedisText, redis_client, redis_text
-from backend.app.core.settings import settings
 from backend.app.models.user import User
 from backend.app.models.user_identity import UserIdentity
 
@@ -105,27 +103,24 @@ def is_google_login_enabled(session: Session) -> bool:
     return google_credentials(session) is not None
 
 
-def oauth_base_url(session: Session, request: Request) -> str:
-    """Origen público del flujo (el redirect_uri debe coincidir con la consola de
-    Google): el dominio VERIFICADO de la instalación o, en su defecto, el primer
-    origen confiable configurado (desarrollo)."""
-    from backend.app.services.system_settings_service import get_system_settings
+def oauth_base_url(session: Session) -> str:
+    """Origen público del flujo: la URL de la instalación declarada por el
+    administrador (``system_settings.app_base_url``). Nunca se deriva de headers
+    de la solicitud: el redirect_uri debe coincidir con la consola de Google y
+    los enlaces solo pueden apuntar al dominio del operador."""
+    from backend.app.services.system_settings_service import installation_base_url
 
-    row = get_system_settings(session)
-    if row.app_base_url and row.app_base_url_verified_at:
-        return row.app_base_url.rstrip("/")
-    origin = (request.headers.get("origin") or "").rstrip("/")
-    if origin:
-        return origin
-    first = sorted(settings.trusted_origins)
-    return first[0] if first else ""
+    base = installation_base_url(session)
+    if not base:
+        raise GoogleLoginError("google_login_unavailable")
+    return base
 
 
-def redirect_uri(session: Session, request: Request) -> str:
-    return f"{oauth_base_url(session, request)}/api/v1/auth/google/callback"
+def redirect_uri(session: Session) -> str:
+    return f"{oauth_base_url(session)}/api/v1/auth/google/callback"
 
 
-def build_authorization_url(session: Session, request: Request) -> str:
+def build_authorization_url(session: Session) -> str:
     """URL de autorización de Google con state (Redis, consumo único) y nonce."""
     credentials = google_credentials(session)
     if credentials is None:
@@ -139,7 +134,7 @@ def build_authorization_url(session: Session, request: Request) -> str:
     query = urlencode(
         {
             "client_id": client_id,
-            "redirect_uri": redirect_uri(session, request),
+            "redirect_uri": redirect_uri(session),
             "response_type": "code",
             "scope": _SCOPES,
             "state": state,
@@ -150,9 +145,7 @@ def build_authorization_url(session: Session, request: Request) -> str:
     return f"{_AUTH_ENDPOINT}?{query}"
 
 
-async def exchange_code(
-    session: Session, request: Request, code: str, nonce: str
-) -> GoogleProfile:
+async def exchange_code(session: Session, code: str, nonce: str) -> GoogleProfile:
     """Canjea el code, verifica el id_token (firma, audiencia, nonce) y exige
     ``email_verified`` — sin ese claim el correo NO puede usarse como puente de
     cuenta (sería un vector de robo por coincidencia de correo)."""
@@ -173,7 +166,7 @@ async def exchange_code(
                     "code": code,
                     "client_id": client_id,
                     "client_secret": client_secret,
-                    "redirect_uri": redirect_uri(session, request),
+                    "redirect_uri": redirect_uri(session),
                     "grant_type": "authorization_code",
                 },
             )

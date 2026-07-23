@@ -106,8 +106,10 @@ class FilterableFieldsTest(unittest.TestCase):
 
     def test_users_publishes_expected_filterable_fields(self) -> None:
         fields = self._fields_by_key(self._list("users", "users:read"))
-        # last_name/updated_at no declaran operadores: no aparecen como filtrables.
-        self.assertEqual(list(fields.keys()), ["name", "email", "is_active", "created_at"])
+        self.assertEqual(
+            list(fields.keys()),
+            ["name", "last_name", "email", "is_active", "created_at"],
+        )
 
     def test_text_field_publishes_text_and_equality_operators(self) -> None:
         fields = self._fields_by_key(self._list("users", "users:read"))
@@ -187,7 +189,10 @@ class FilterableFieldsTest(unittest.TestCase):
 
     def test_roles_filterable_fields_exclude_internal_and_empty(self) -> None:
         fields = self._fields_by_key(self._list("roles", "roles:read"))
-        self.assertEqual(list(fields.keys()), ["name", "is_active", "created_at"])
+        self.assertEqual(
+            list(fields.keys()),
+            ["name", "description", "is_active", "created_at", "updated_at"],
+        )
         self.assertNotIn("id", fields)
 
     def test_date_field_publishes_equality_and_range_bounds(self) -> None:

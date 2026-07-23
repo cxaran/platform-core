@@ -17,6 +17,7 @@ import annotated_types as at
 from pydantic import BaseModel, EmailStr, SecretStr
 from pydantic.fields import FieldInfo
 
+from backend.app.query.annotations import unwrap_annotated
 from backend.app.query.operators import Operator, parameter_name_for
 from backend.app.query.plans import CompiledQueryPlan
 from backend.app.resources.registry import (
@@ -96,17 +97,10 @@ def _require_label(field_info: FieldInfo, field_name: str) -> str:
     return label
 
 
-def _unwrap_annotated(annotation: Any) -> Any:
-    value = annotation
-    while get_origin(value) is Annotated:
-        value = get_args(value)[0]
-    return value
-
-
 def _unwrap(annotation: Any) -> Any:
-    value = _unwrap_annotated(annotation)
+    value = unwrap_annotated(annotation)
     if get_origin(value) in (Union, UnionType):
-        args = [_unwrap_annotated(arg) for arg in get_args(value) if arg is not type(None)]
+        args = [unwrap_annotated(arg) for arg in get_args(value) if arg is not type(None)]
         if len(args) == 1:
             return args[0]
     return value
@@ -116,6 +110,8 @@ def _value_type(annotation: Any) -> FieldValueType:
     inner = _unwrap(annotation)
     if get_origin(inner) in (list, tuple, set, frozenset):
         return FieldValueType.ARRAY
+    if inner is dict or get_origin(inner) is dict:
+        return FieldValueType.JSON
     if inner is EmailStr:
         return FieldValueType.EMAIL
     if inner is SecretStr or inner is str:
@@ -251,13 +247,18 @@ _FILTERABLE_OPERATOR_ORDER = (
     Operator.ENDS_WITH,
     Operator.EQ,
     Operator.IN,
+    Operator.NOT_IN,
     Operator.NE,
+    Operator.GT,
     Operator.GTE,
+    Operator.LT,
     Operator.LTE,
     Operator.ON,
     Operator.BEFORE,
     Operator.AFTER,
     Operator.BETWEEN,
+    Operator.CONTAINS_ANY,
+    Operator.CONTAINS_ALL,
 )
 
 # Tipos que admiten autofiltro por valores únicos (facetas): universos discretos o
@@ -289,6 +290,16 @@ _CALENDAR_LABELS = {
 _RANGE_BOUND_LABELS = {
     Operator.GTE: "Desde",
     Operator.LTE: "Hasta",
+}
+# Comparación estricta (mayor/menor que): un solo valor, comparación directa.
+_STRICT_LABELS = {
+    Operator.GT: "Mayor que",
+    Operator.LT: "Menor que",
+}
+# Operadores de conjunto sobre columnas ARRAY (checklist estilo multiselección).
+_ARRAY_LABELS = {
+    Operator.CONTAINS_ANY: "Contiene cualquiera de",
+    Operator.CONTAINS_ALL: "Contiene todos",
 }
 _TEMPORAL_VALUE_TYPES = (FieldValueType.DATE, FieldValueType.DATETIME)
 _NUMERIC_VALUE_TYPES = (FieldValueType.INTEGER, FieldValueType.DECIMAL)
@@ -394,20 +405,33 @@ def _filterable_operator(
     calendar_tz: str,
     in_options: Optional[list[ResourceFilterOption]] = None,
     max_in_values: Optional[int] = None,
+    between_calendar: bool = True,
 ) -> FilterableOperatorCapability:
     key = FilterOperator(operator.value)
-    if operator is Operator.IN:
-        # Autofiltro por valores: N valores en un parámetro repetido. Las opciones
-        # cerradas (enum/select declarado) viajan aquí; para universos abiertos el
-        # cliente las obtiene con conteos del endpoint de facetas de la lista.
+    if operator in (Operator.IN, Operator.NOT_IN):
+        # Autofiltro por valores (``in``) y su complemento (``not_in``): N valores en un
+        # parámetro repetido. Las opciones cerradas (enum/select declarado) viajan aquí;
+        # para universos abiertos el cliente las obtiene del endpoint de facetas.
         return FilterableOperatorCapability(
             key=key,
-            label="Cualquiera de",
+            label="Cualquiera de" if operator is Operator.IN else "Ninguno de",
             value_shape=FilterValueShape.MULTI,
             widget=WidgetType.MULTISELECT,
             parameter_name=parameter,
             multiple=True,
             options=in_options,
+            max_values=max_in_values,
+        )
+    if operator in _ARRAY_LABELS:
+        # Columna ARRAY: solapa cualquiera / contiene todos. N valores del tipo del
+        # elemento; universo abierto (sin facetas, el cliente teclea los valores).
+        return FilterableOperatorCapability(
+            key=key,
+            label=_ARRAY_LABELS[operator],
+            value_shape=FilterValueShape.MULTI,
+            widget=WidgetType.MULTISELECT,
+            parameter_name=parameter,
+            multiple=True,
             max_values=max_in_values,
         )
     if operator in _TEXT_MATCH_LABELS:
@@ -438,14 +462,15 @@ def _filterable_operator(
             parameter_name=parameter,
             case_sensitive=True,
         )
-    if operator in _RANGE_BOUND_LABELS:
-        # gte/lte: un extremo del rango. En fechas se publica la zona en que el cliente
-        # interpreta las fechas civiles (p. ej. para calcular "hoy"); la comparación en el
-        # backend es DIRECTA (sin límites de día por zona). Los numéricos no llevan zona.
+    if operator in _RANGE_BOUND_LABELS or operator in _STRICT_LABELS:
+        # gte/lte (extremos inclusivos) y gt/lt (estrictos): un solo valor, comparación
+        # DIRECTA. En fechas se publica la zona en que el cliente interpreta las fechas
+        # civiles (p. ej. para calcular "hoy"); los numéricos no llevan zona.
         is_temporal = value_type in _TEMPORAL_VALUE_TYPES
+        label = _RANGE_BOUND_LABELS.get(operator) or _STRICT_LABELS[operator]
         return FilterableOperatorCapability(
             key=key,
-            label=_RANGE_BOUND_LABELS[operator],
+            label=label,
             value_shape=FilterValueShape.SINGLE,
             widget=_range_bound_widget(value_type),
             parameter_name=parameter,
@@ -460,17 +485,19 @@ def _filterable_operator(
             parameter_name=parameter,
             calendar_timezone=calendar_tz,
         )
-    # between: dos parámetros, extremo superior inclusivo para el usuario.
+    # between: dos parámetros, ambos inclusivos para el usuario. Polimórfico: en fechas
+    # es un rango de calendario (widget daterange, con zona); en numéricos es un rango de
+    # valores directo (widget numberrange, sin zona).
     assert range_params is not None
     return FilterableOperatorCapability(
         key=key,
         label="Entre",
         value_shape=FilterValueShape.RANGE,
-        widget=WidgetType.DATERANGE,
+        widget=WidgetType.DATERANGE if between_calendar else WidgetType.NUMBERRANGE,
         parameters=FilterableRangeParameters.model_validate(
             {"from": range_params[0], "to": range_params[1]}
         ),
-        calendar_timezone=calendar_tz,
+        calendar_timezone=calendar_tz if between_calendar else None,
         range_end_inclusive=True,
     )
 
@@ -501,7 +528,11 @@ def _filterable_fields(
         if descriptor.parameter_name is not None
     }
     ext_range = {
-        descriptor.field_name: (descriptor.from_parameter, descriptor.to_parameter)
+        descriptor.field_name: (
+            descriptor.from_parameter,
+            descriptor.to_parameter,
+            descriptor.calendar,
+        )
         for descriptor in plan.extended_filters
         if descriptor.operator is Operator.BETWEEN
     }
@@ -531,6 +562,7 @@ def _filterable_fields(
                         eq_options=None,
                         eq_widget=None,
                         calendar_tz=calendar_tz,
+                        between_calendar=range_params[2],
                     )
                 )
                 continue
@@ -627,6 +659,12 @@ def _list_capability(definition: ResourceDefinition) -> ResourceListCapability:
     list_schema = definition.list_schema
     searchable = _searchable_field_names(plan)
 
+    # Campos con al menos un operador extendido declarado (texto/fecha/gt-lt/not_in/
+    # array/between): se emiten como filtrables aunque no sean columna visible ni filtro
+    # ``eq`` — su único filtro vive en ``extended_filters`` (p. ej. un campo ARRAY solo
+    # consultable por ``contains_any``).
+    extended_filter_fields = {descriptor.field_name for descriptor in plan.extended_filters}
+
     fields: list[ResourceFieldCapability] = []
     field_caps: dict[str, ResourceFieldCapability] = {}
     for name, field_info in list_schema.model_fields.items():
@@ -641,7 +679,11 @@ def _list_capability(definition: ResourceDefinition) -> ResourceListCapability:
         # SÓLO si tienen label (title/ui.label): la proyección exige label a todo campo emitido,
         # así que un campo de filtro interno sin label (no destinado a la UI) se omite en vez de
         # romper la capability.
-        is_filter_field = has_label and (name in plan.filter_columns or name in plan.range_fields)
+        is_filter_field = has_label and (
+            name in plan.filter_columns
+            or name in plan.range_fields
+            or name in extended_filter_fields
+        )
         # Se emite metadata pública del campo si está declarado para lista, para filtro
         # explícito (``ui.filter``), o si es un campo de filtro del plan con label (scoping).
         if not (visible_in_list or has_filter or is_filter_field):

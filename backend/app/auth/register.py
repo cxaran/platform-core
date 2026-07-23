@@ -1,16 +1,11 @@
 from pydantic import EmailStr
 from sqlalchemy.exc import IntegrityError
 
-from urllib.parse import quote
-
 from backend.app.core.database import SessionDep
 from backend.app.models.user import User
 from backend.app.schemas.auth import RegisterCompleteRequest
-from backend.app.services.email_service import action_email_html, send_system_email
-from backend.app.services.system_settings_service import (
-    email_token_minutes_effective,
-    installation_base_url,
-)
+from backend.app.services.email_service import send_system_email, token_action_email
+from backend.app.services.system_settings_service import email_token_minutes_effective
 
 from .security import generate_token, get_password_hash, get_user_by_email, save_user
 from .token_store import delete_token_pair, get_subject, set_token_pair
@@ -29,19 +24,14 @@ async def send_registration_token(
     ttl = email_token_minutes_effective(session) * 60
     set_token_pair(REGISTER_TOKEN_KEY, str(email), token, ttl)
 
-    # Con dominio de instalación: botón/enlace que prellena el token en la página
-    # de confirmación. Sin él (instalación sin dominio): token en texto, como antes.
-    base = installation_base_url(session)
-    message = f"Tu token de registro es: {token}"
-    html = None
-    if base:
-        link = f"{base}/register/complete?token={quote(token)}"
-        message = f"{message}\n\nCompleta tu registro aquí: {link}"
-        html = action_email_html(
-            message=f"Tu token de registro es: {token}",
-            action_url=link,
-            action_label="Completar registro",
-        )
+    message, html = token_action_email(
+        session,
+        intro=f"Tu token de registro es: {token}",
+        token=token,
+        path="/register/complete",
+        action_label="Completar registro",
+        action_hint="Completa tu registro aquí",
+    )
 
     await send_system_email(
         session,

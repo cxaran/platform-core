@@ -62,14 +62,11 @@ class BootstrapInitializeInput:
     additional_roles: list[BootstrapAdditionalRoleInput] = field(default_factory=list)
     # Política inicial de plataforma (sin secretos de terceros).
     # Dominio público (origen) de la instalación: se persiste en system_settings y
-    # habilita las mutaciones autenticadas por cookie desde ese origen (guard CSRF).
+    # se usa para construir URLs absolutas (enlaces de correo, redirect de OAuth).
     app_base_url: str | None = None
     public_registration_enabled: bool = False
     password_reset_enabled: bool = True
     institution_name: str | None = None
-    # Duración de sesión (None = default del despliegue).
-    customer_session_days: int | None = None
-    staff_session_minutes: int | None = None
 
 
 @dataclass(frozen=True)
@@ -80,9 +77,13 @@ class BootstrapInitializeResult:
 
 
 def get_platform_setup_status(session: Session, *, token_required: bool) -> PlatformSetupStatus:
-    setup = ensure_platform_setup(session)
+    """Estado del asistente SIN efectos: es una consulta (GET) — la fila de
+    ``platform_setup`` nace en initialize/seed, nunca aquí. Fila ausente equivale
+    a pendiente."""
+    setup = session.get(PlatformSetup, SETUP_ID)
+    pending = setup is None or setup.status == SETUP_PENDING
     return PlatformSetupStatus(
-        setup_required=setup.status == SETUP_PENDING and not _users_exist(session),
+        setup_required=pending and not _users_exist(session),
         token_required=token_required,
     )
 
@@ -168,8 +169,6 @@ def initialize_platform(session: Session, payload: BootstrapInitializeInput) -> 
         public_registration_enabled=payload.public_registration_enabled,
         institution_name=payload.institution_name,
         password_reset_enabled=payload.password_reset_enabled,
-        customer_session_days=payload.customer_session_days,
-        staff_session_minutes=payload.staff_session_minutes,
         app_base_url=payload.app_base_url,
     )
     session.flush()
@@ -252,12 +251,13 @@ def _validate_payload(payload: BootstrapInitializeInput, permissions: set[str]) 
         raise BootstrapError("too_many_roles", "Demasiados roles iniciales.")
 
     if payload.app_base_url is not None and payload.app_base_url.strip():
-        from backend.app.core.runtime_origins import normalize_base_url
+        from backend.app.services.system_settings_service import public_base_url_or_none
 
-        if normalize_base_url(payload.app_base_url) is None:
+        if public_base_url_or_none(payload.app_base_url) is None:
             raise BootstrapError(
                 "invalid_field",
-                "app_base_url debe ser un origen http(s) sin ruta ni credenciales.",
+                "app_base_url debe ser un origen http(s) sin ruta ni credenciales "
+                "(HTTPS obligatorio en producción).",
             )
 
     names = {_normalize_name(payload.system_admin_role.label)}

@@ -11,6 +11,7 @@ import Link from "next/link";
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 
 import { browserApi } from "@/core/api/browser-client";
+import { BroadcastComposer } from "@/components/layout/BroadcastComposer";
 import {
   currentSubscription,
   disablePush,
@@ -326,6 +327,8 @@ export function NotificationsBell() {
               ) : null}
             </div>
           ) : null}
+
+          <BroadcastComposer onSent={() => void load()} />
 
           {items.length === 0 ? (
             <p style={{ margin: 0, padding: "16px 14px", fontSize: 13, color: "var(--tx3)" }}>

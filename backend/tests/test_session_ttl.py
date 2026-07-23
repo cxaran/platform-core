@@ -1,10 +1,10 @@
-"""Sesiones diferenciadas y renovación deslizante.
+"""Duración de sesión y renovación deslizante.
 
-- Cliente (sin roles): sesión larga de ``customer_session_expire_days``.
-- Personal (con roles): sesión corta de ``access_token_expire_minutes``.
+- Toda sesión dura ``access_token_expire_minutes`` (no hay tipos de sesión:
+  el core es una plataforma de administración, sin "clientes").
 - Cualquier sesión válida pasada la mitad de su vida se renueva sola con el
-  mismo ttl/jti (middleware deslizante) — el cliente mensual no vuelve a
-  iniciar sesión y el personal no es expulsado a media jornada.
+  mismo ttl/jti (middleware deslizante) — el usuario activo no es expulsado
+  a media jornada.
 """
 
 import os
@@ -53,7 +53,7 @@ from backend.app.core.database import get_db  # noqa: E402
 from backend.app.core.settings import settings  # noqa: E402
 from backend.app.main import app  # noqa: E402
 from backend.app.models import Base  # noqa: E402
-from backend.app.models.user import Role, User, UserRole  # noqa: E402
+from backend.app.models.user import User  # noqa: E402
 from backend.app.utils.utc_now import utc_now  # noqa: E402
 
 PASSWORD = "S3cret!password"
@@ -96,16 +96,8 @@ class SessionTtlTest(unittest.TestCase):
             patch.start()
 
         with Session(self.engine) as session:
-            self.customer_email = "cliente@example.com"
-            session.add(self._user(self.customer_email))
-            self.staff_email = "empleado@example.com"
-            staff = self._user(self.staff_email)
-            session.add(staff)
-            session.flush()
-            role = Role(name="cajero")
-            session.add(role)
-            session.flush()
-            session.add(UserRole(user_id=staff.id, role_id=role.id))
+            self.user_email = "usuario@example.com"
+            session.add(self._user(self.user_email))
             session.commit()
 
     def tearDown(self) -> None:
@@ -131,37 +123,10 @@ class SessionTtlTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         return response
 
-    def test_customer_gets_long_session_and_staff_short(self) -> None:
-        customer = self._login(self.customer_email)
-        customer_age = _max_age(customer.headers.get_list("set-cookie"))
-        self.assertEqual(
-            customer_age, settings.customer_session_expire_days * 24 * 3600
-        )
-
-        self.client.cookies.clear()
-        staff = self._login(self.staff_email)
-        staff_age = _max_age(staff.headers.get_list("set-cookie"))
-        self.assertEqual(staff_age, settings.access_token_expire_minutes * 60)
-
-    def test_db_policy_overrides_deployment_defaults(self) -> None:
-        """La política de system_settings (sembrable desde bootstrap) manda
-        sobre los defaults del despliegue."""
-        from backend.app.models.system_settings import SystemSettings
-
-        with Session(self.engine) as session:
-            session.add(
-                SystemSettings(customer_session_days=30, staff_session_minutes=480)
-            )
-            session.commit()
-
-        customer = self._login(self.customer_email)
-        self.assertEqual(
-            _max_age(customer.headers.get_list("set-cookie")), 30 * 24 * 3600
-        )
-
-        self.client.cookies.clear()
-        staff = self._login(self.staff_email)
-        self.assertEqual(_max_age(staff.headers.get_list("set-cookie")), 480 * 60)
+    def test_login_session_uses_deployment_ttl(self) -> None:
+        response = self._login(self.user_email)
+        max_age = _max_age(response.headers.get_list("set-cookie"))
+        self.assertEqual(max_age, settings.access_token_expire_minutes * 60)
 
     def test_sliding_renewal_past_half_life(self) -> None:
         """Un token válido pasada la mitad de su vida se renueva con igual ttl."""

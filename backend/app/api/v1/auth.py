@@ -94,7 +94,7 @@ async def login(
     mode = login_verification_mode(session)
     user = get_user_by_email(session, payload.email)
     if user is not None and user_requires_verification(session, user, mode):
-        sent = await start_login_challenge(session, user, mode, response, request)
+        sent = await start_login_challenge(session, user, mode, response)
         if not sent:
             api_error(
                 status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -152,12 +152,7 @@ def verify_login(
         )
 
     clear_challenge_cookie(response)
-    from backend.app.auth.auth import session_ttl_for_user
-
-    set_session_cookie(
-        response,
-        create_access_token(str(user.id), user.token, ttl=session_ttl_for_user(session, user)),
-    )
+    set_session_cookie(response, create_access_token(str(user.id), user.token))
     return LoginResponse(message="Sesión iniciada correctamente")
 
 
@@ -179,7 +174,7 @@ def google_login_start(request: Request, session: SessionDep):
     if not is_google_login_enabled(session):
         api_error(status.HTTP_404_NOT_FOUND, "not_found", "No disponible")
     try:
-        url = build_authorization_url(session, request)
+        url = build_authorization_url(session)
     except GoogleLoginError:
         api_error(status.HTTP_404_NOT_FOUND, "not_found", "No disponible")
     return RedirectResponse(url, status_code=status.HTTP_302_FOUND)
@@ -187,7 +182,6 @@ def google_login_start(request: Request, session: SessionDep):
 
 @router.get("/google/callback")
 async def google_login_callback(
-    request: Request,
     session: SessionDep,
     code: str = "",
     state: str = "",
@@ -204,12 +198,14 @@ async def google_login_callback(
         _consume_state,
         exchange_code,
         is_google_login_enabled,
-        oauth_base_url,
         resolve_user,
     )
     from backend.app.auth.security import create_access_token
+    from backend.app.services.system_settings_service import installation_base_url
 
-    base = oauth_base_url(session, request)
+    # Redirects RELATIVOS al propio origen si no hay URL declarada (el navegador
+    # los resuelve contra el host actual); con URL declarada, absolutos a ella.
+    base = installation_base_url(session) or ""
     failure = RedirectResponse(
         f"{base}/login?error=google", status_code=status.HTTP_302_FOUND
     )
@@ -219,7 +215,7 @@ async def google_login_callback(
     if nonce is None:
         return failure
     try:
-        profile = await exchange_code(session, request, code, nonce)
+        profile = await exchange_code(session, code, nonce)
         user = resolve_user(session, profile)
     except GoogleLoginError as error:
         # Causa estable sólo en logs; el navegador recibe un marcador genérico.
@@ -229,12 +225,7 @@ async def google_login_callback(
         return failure
 
     success = RedirectResponse(f"{base}/", status_code=status.HTTP_302_FOUND)
-    from backend.app.auth.auth import session_ttl_for_user
-
-    set_session_cookie(
-        success,
-        create_access_token(str(user.id), user.token, ttl=session_ttl_for_user(session, user)),
-    )
+    set_session_cookie(success, create_access_token(str(user.id), user.token))
     return success
 
 

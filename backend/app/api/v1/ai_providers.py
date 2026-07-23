@@ -11,8 +11,9 @@ import uuid
 from fastapi import APIRouter, status
 from sqlmodel import select
 
-from backend.app.agent.crypto import encrypt_secret
+from backend.app.services.secret_cipher import SecretCipherError, encrypt_secret
 from backend.app.api.resource_actions import (
+    api_error,
     commit_or_conflict,
     get_owned_or_404,
     serialize,
@@ -30,6 +31,18 @@ from backend.app.schemas.ai_provider_credential import (
 from backend.app.schemas.auth import MessageResponse
 
 router = APIRouter(prefix="/users/me/ai-providers", tags=["ai-providers"])
+
+
+def _encrypt_or_503(secret: str) -> str:
+    """Cifra el secreto de proveedor; sin clave Fernet configurada no se acepta."""
+    try:
+        return encrypt_secret(secret)
+    except SecretCipherError:
+        api_error(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "encryption_unavailable",
+            "No hay clave de cifrado configurada: define APP_ENCRYPTION_KEY (Fernet).",
+        )
 
 
 @router.get("", response_model=list[AiProviderCredentialRead])
@@ -59,7 +72,7 @@ def create_credential(
         user_id=current_user.id,
         provider=payload.provider,
         label=payload.label,
-        secret_encrypted=encrypt_secret(payload.secret),
+        secret_encrypted=_encrypt_or_503(payload.secret),
         default_model=payload.default_model,
         created_by=current_user.id,
     )
@@ -85,7 +98,7 @@ def update_credential(
     if "secret" in data:
         secret = data.pop("secret")
         if secret is not None:
-            data["secret_encrypted"] = encrypt_secret(secret)
+            data["secret_encrypted"] = _encrypt_or_503(secret)
 
     update_entity_values(
         session,

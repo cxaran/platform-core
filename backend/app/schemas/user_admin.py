@@ -2,14 +2,14 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from pydantic import EmailStr, Field, SecretStr, field_validator, model_validator
-from typing_extensions import Annotated, Self
+from pydantic import EmailStr, Field, SecretStr
+from typing_extensions import Annotated
 
 from backend.app.schemas.base import ApiPatchSchema, ApiReadSchema, ApiWriteSchema
-from backend.app.schemas.user import validate_password
+from backend.app.schemas.user import PasswordConfirmMixin, PersonNameMixin
 
 
-class UserAdminCreate(ApiWriteSchema):
+class UserAdminCreate(PersonNameMixin, PasswordConfirmMixin, ApiWriteSchema):
     """Creación administrativa de un usuario."""
 
     name: Annotated[
@@ -53,22 +53,6 @@ class UserAdminCreate(ApiWriteSchema):
         title="Activo",
         json_schema_extra={"ui": {"form": True, "widget": "switch"}},
     )
-
-    @field_validator("name", "last_name")
-    def names_not_empty(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("El nombre y apellido no pueden estar vacíos")
-        return value
-
-    @field_validator("password")
-    def password_validator(cls, value: SecretStr) -> SecretStr:
-        return validate_password(value)
-
-    @model_validator(mode="after")
-    def check_passwords_match(self) -> Self:
-        if self.password != self.confirm_password:
-            raise ValueError("Las contraseñas no coinciden")
-        return self
 
 
 class UserAdminRead(ApiReadSchema):

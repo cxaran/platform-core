@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
-import { AuthLink, PublicAuthShell } from "@/features/auth/PublicAuthShell";
+import { AuthLink } from "@/features/auth/auth-pieces";
+import { PublicAuthShell } from "@/features/auth/PublicAuthShell";
 import { RegisterCompleteForm } from "@/features/auth/RegisterCompleteForm";
 import { getAuthPolicy } from "@/core/auth/policy-client";
 import { getSession } from "@/core/auth/session";

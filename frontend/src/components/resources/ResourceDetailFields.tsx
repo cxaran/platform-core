@@ -33,7 +33,11 @@ export function ResourceDetailFields({
           <div key={field.name} className="min-w-0">
             <dt className="text-sm font-medium text-slate-500">{field.label}</dt>
             <dd className="mt-1 break-words text-sm text-slate-900">
-              {relationTarget ? (
+              {kind === "json" && value != null ? (
+                <pre className="overflow-x-auto rounded-[9px] border border-[var(--border2)] bg-[var(--bg2)] p-2 text-xs leading-relaxed">
+                  {formatDisplayValue(field, value)}
+                </pre>
+              ) : relationTarget ? (
                 <RelationLabel
                   target={relationTarget}
                   value={value == null ? null : String(value)}

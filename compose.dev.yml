@@ -3,10 +3,6 @@ name: platform-core-dev
 x-backend-environment: &backend-environment
   ENVIRONMENT: local
   SECRET_KEY: dev-secret-key-change-me
-  # Orígenes de navegador confiables para CSRF. Por defecto solo localhost; para probar
-  # desde otro dispositivo en la LAN, exporta TRUSTED_BROWSER_ORIGINS incluyendo el
-  # origen LAN (p. ej. "http://localhost:3000,http://192.168.0.213:3000").
-  TRUSTED_BROWSER_ORIGINS: ${TRUSTED_BROWSER_ORIGINS:-http://localhost:3000,http://localhost:8080}
   ACCESS_TOKEN_EXPIRE_MINUTES: "30"
   EMAIL_TOKEN_EXPIRE_MINUTES: "30"
   TRYS_BEFORE_LOCK: "5"
@@ -159,8 +155,6 @@ services:
       CHOKIDAR_USEPOLLING: "true"
       GATEWAY_PUBLIC_PATH_PREFIX: /model-gateway
       GATEWAY_ENABLE_ROOT_PATH_ALIAS: "true"
-      # El navegador llega por nginx dev en http://localhost:8080 (origen del copiloto).
-      GATEWAY_ALLOWED_ORIGINS: ${TRUSTED_BROWSER_ORIGINS:-http://localhost:3000,http://localhost:8080}
       # Mismos valores que el backend (verificación de ticket y arriendo interno).
       GATEWAY_AGENT_TICKET_SECRET: dev-agent-ticket-secret-shared
       GATEWAY_BACKEND_INTERNAL_URL: http://backend:8000

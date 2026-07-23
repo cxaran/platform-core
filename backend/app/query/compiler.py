@@ -153,10 +153,93 @@ def _apply_extended_filters(
             stmt = _apply_not_equals(stmt, query, descriptor, column)
         elif operator in (Operator.CONTAINS, Operator.STARTS_WITH, Operator.ENDS_WITH):
             stmt = _apply_text_match(stmt, query, descriptor, column)
+        elif operator in (Operator.GT, Operator.LT):
+            stmt = _apply_strict_comparison(stmt, query, descriptor, column)
+        elif operator is Operator.NOT_IN:
+            stmt = _apply_not_in(stmt, query, descriptor, column)
+        elif operator in (Operator.CONTAINS_ANY, Operator.CONTAINS_ALL):
+            stmt = _apply_array_membership(stmt, query, descriptor, column)
         elif operator in (Operator.ON, Operator.BEFORE, Operator.AFTER):
             stmt = _apply_calendar_single(stmt, query, descriptor, column, tz)
         elif operator is Operator.BETWEEN:
-            stmt = _apply_calendar_between(stmt, query, descriptor, column, tz)
+            if descriptor.calendar:
+                stmt = _apply_calendar_between(stmt, query, descriptor, column, tz)
+            else:
+                stmt = _apply_value_between(stmt, query, descriptor, column)
+    return stmt
+
+
+def _apply_strict_comparison(
+    stmt: Select[Any],
+    query: OffsetQuerySchema,
+    descriptor: CompiledExtendedFilter,
+    column: QueryableColumn,
+) -> Select[Any]:
+    # gt/lt: comparación estricta directa (sin límites de día), simétrica a gte/lte.
+    assert descriptor.parameter_name is not None
+    value = getattr(query, descriptor.parameter_name)
+    if value is None:
+        return stmt
+    if descriptor.operator is Operator.GT:
+        return stmt.where(column > value)
+    return stmt.where(column < value)
+
+
+def _apply_not_in(
+    stmt: Select[Any],
+    query: OffsetQuerySchema,
+    descriptor: CompiledExtendedFilter,
+    column: QueryableColumn,
+) -> Select[Any]:
+    # not_in: complemento de ``in``. ``NOT IN`` excluye NULL en SQL (NULL != v es
+    # desconocido); el null se gestiona con isnull. Lista vacía/ausente: no filtra.
+    assert descriptor.parameter_name is not None
+    values = getattr(query, descriptor.parameter_name)
+    if not values:
+        return stmt
+    return stmt.where(column.notin_(values))
+
+
+def _apply_array_membership(
+    stmt: Select[Any],
+    query: OffsetQuerySchema,
+    descriptor: CompiledExtendedFilter,
+    column: QueryableColumn,
+) -> Select[Any]:
+    # Columna ARRAY (Postgres): contains_any = solapa (``&&``); contains_all = contiene
+    # (``@>``). Lista vacía/ausente: no filtra.
+    assert descriptor.parameter_name is not None
+    values = getattr(query, descriptor.parameter_name)
+    if not values:
+        return stmt
+    if descriptor.operator is Operator.CONTAINS_ANY:
+        return stmt.where(column.overlap(values))
+    return stmt.where(column.contains(values))
+
+
+def _apply_value_between(
+    stmt: Select[Any],
+    query: OffsetQuerySchema,
+    descriptor: CompiledExtendedFilter,
+    column: QueryableColumn,
+) -> Select[Any]:
+    # between numérico/``date``: extremos independientes, ambos inclusivos (>= from,
+    # <= to). Rango invertido: 422 honesto (igual que el between de calendario).
+    assert descriptor.from_parameter is not None
+    assert descriptor.to_parameter is not None
+    from_value = getattr(query, descriptor.from_parameter)
+    to_value = getattr(query, descriptor.to_parameter)
+    if from_value is not None and to_value is not None and from_value > to_value:
+        _fail(
+            "invalid_range",
+            f"El rango de '{descriptor.field_name}' está invertido: "
+            f"'{descriptor.from_parameter}' no puede ser mayor que '{descriptor.to_parameter}'.",
+            field_name=descriptor.from_parameter,
+        )
+    if from_value is not None:
+        stmt = stmt.where(column >= from_value)
+    if to_value is not None:
+        stmt = stmt.where(column <= to_value)
     return stmt
 
 

@@ -1,8 +1,7 @@
-"""``FieldSpec``: declaración única por campo consultable (Fase 2, Paso 1).
+"""``FieldSpec``: declaración única por campo consultable.
 
 Concentra el contrato de un campo: tipo público, fuente ORM, operadores reales y
-si participa en la búsqueda global. La metadata de UI (label/widget/visibilidad) se
-añadirá en pasos posteriores; los campos query-only no se exponen a UI por defecto.
+si participa en la búsqueda global. Los campos query-only no se exponen a UI por defecto.
 """
 
 from dataclasses import dataclass, field

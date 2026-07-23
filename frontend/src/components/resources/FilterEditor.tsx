@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import type { FilterableFieldControl } from "@/core/resources/filterable";
+import { RELATIVE_DATE_PRESETS } from "@/core/resources/relative-dates";
 
 import { FacetChecklist } from "./FacetChecklist";
 import { fieldParameterNames } from "./filter-nav";
@@ -70,16 +71,41 @@ export function FilterEditor({
     >
       {field.operators.map((operator) => {
         const baseId = `flt-${field.key}-${operator.key}`;
-        if (operator.widget === "daterange") {
+        if (operator.widget === "daterange" || operator.widget === "numberrange") {
+          // Rango por dos extremos: fechas (daterange) o números (numberrange).
+          const boundType = operator.widget === "numberrange" ? "number" : "date";
+          // Presets de fecha relativa: solo para el rango de CALENDARIO (con zona), que es
+          // donde "hoy"/"últimos N días" tienen sentido. Rellenan ambos extremos civiles
+          // calculados en la zona del contrato; el numérico no los lleva.
+          const presetTz =
+            operator.widget === "daterange" ? operator.calendarTimezone : undefined;
           return (
             <div key={operator.key} className="space-y-2">
+              {presetTz && operator.fromParameter && operator.toParameter ? (
+                <div className="flex flex-wrap gap-1">
+                  {RELATIVE_DATE_PRESETS.map((preset) => (
+                    <button
+                      key={preset.key}
+                      type="button"
+                      onClick={() => {
+                        const { from, to } = preset.range(presetTz);
+                        setValue(operator.fromParameter ?? "", from);
+                        setValue(operator.toParameter ?? "", to);
+                      }}
+                      className="rounded-[7px] border border-[var(--border2)] px-2 py-0.5 text-[11.5px] text-[var(--tx2)] transition hover:border-[var(--accent-bd)] hover:text-[var(--tx)]"
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
               <div>
                 <label htmlFor={`${baseId}-from`} className={LABEL_CLASS}>
                   {operator.label} (desde)
                 </label>
                 <input
                   id={`${baseId}-from`}
-                  type="date"
+                  type={boundType}
                   value={draft[operator.fromParameter ?? ""] ?? ""}
                   onChange={(event) => setValue(operator.fromParameter ?? "", event.target.value)}
                   className={INPUT_CLASS}
@@ -91,7 +117,7 @@ export function FilterEditor({
                 </label>
                 <input
                   id={`${baseId}-to`}
-                  type="date"
+                  type={boundType}
                   value={draft[operator.toParameter ?? ""] ?? ""}
                   onChange={(event) => setValue(operator.toParameter ?? "", event.target.value)}
                   className={INPUT_CLASS}
@@ -154,8 +180,14 @@ export function FilterEditor({
             </label>
             <input
               id={baseId}
-              type={operator.widget === "date" ? "date" : "text"}
-              maxLength={operator.widget === "date" ? undefined : 200}
+              type={
+                operator.widget === "date"
+                  ? "date"
+                  : operator.widget === "number"
+                    ? "number"
+                    : "text"
+              }
+              maxLength={operator.widget === "date" || operator.widget === "number" ? undefined : 200}
               placeholder={operator.placeholder}
               value={draft[parameter] ?? ""}
               onChange={(event) => setValue(parameter, event.target.value)}

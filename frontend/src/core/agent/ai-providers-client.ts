@@ -57,3 +57,48 @@ export function deleteAiCredential(id: string): Promise<{ message: string }> {
     method: "DELETE",
   });
 }
+
+// --- Conexión OAuth ChatGPT Plus/Codex (provider openai / credential_type oauth) ---
+
+const OAUTH_BASE = "/api/v1/users/me/ai-providers/oauth/openai";
+
+export interface OAuthStartResponse {
+  authorize_url: string;
+  state: string;
+}
+
+export interface OAuthCompleteRequest {
+  code: string;
+  state: string;
+}
+
+export interface OAuthStatusResponse {
+  connected: boolean;
+  account_id?: string | null;
+  expires_at?: string | null;
+}
+
+/** Inicia el flujo OAuth de ChatGPT: devuelve la URL de autorización y el state. */
+export function startOpenAiOAuth(): Promise<OAuthStartResponse> {
+  return browserApi<OAuthStartResponse>(`${OAUTH_BASE}/start`, { method: "POST" });
+}
+
+/** Completa el flujo OAuth con el code+state del callback. */
+export function completeOpenAiOAuth(
+  payload: OAuthCompleteRequest,
+): Promise<OAuthStatusResponse> {
+  return browserApi<OAuthStatusResponse>(`${OAUTH_BASE}/complete`, {
+    method: "POST",
+    body: { ...payload },
+  });
+}
+
+/** Estado de la conexión OAuth (connected + account_id), sin tokens. */
+export function getOpenAiOAuthStatus(): Promise<OAuthStatusResponse> {
+  return browserApi<OAuthStatusResponse>(`${OAUTH_BASE}/status`, { method: "GET" });
+}
+
+/** Desconecta la cuenta ChatGPT (baja lógica de la credencial OAuth). */
+export function disconnectOpenAiOAuth(): Promise<{ message: string }> {
+  return browserApi<{ message: string }>(OAUTH_BASE, { method: "DELETE" });
+}

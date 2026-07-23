@@ -38,14 +38,16 @@ test("isApiErrorBody: rechaza objeto sin code o sin message, o con tipos erróne
 
 // --- normalizeApiError ---
 
-test("normalizeApiError: deja pasar un envelope válido tal cual (misma referencia)", () => {
+test("normalizeApiError: preserva un envelope válido y sus mensajes de negocio", () => {
   const body: ApiErrorBody = {
     code: "resource_conflict",
     message: "Conflicto",
     errors: [{ field: "curp", message: "duplicada" }],
   };
   const result = normalizeApiError(409, body);
-  assert.equal(result, body); // passthrough sin copiar
+  // Los items sin `type` (mensajes de negocio del backend) quedan intactos; la
+  // traducción de los items estructurados se prueba en validation-messages.test.ts.
+  assert.deepEqual(result, body);
 });
 
 test("normalizeApiError: respuesta no conforme cae a un envelope http_<status> seguro", () => {

@@ -66,4 +66,5 @@ nav:
       - Puesta en marcha: producto/puesta-en-marcha.md
   - Desarrollo:
       - Arquitectura: desarrollo/arquitectura.md
+      - Contrato de recursos: desarrollo/contrato-de-recursos.md
       - Tareas en segundo plano: desarrollo/tareas-en-segundo-plano.md

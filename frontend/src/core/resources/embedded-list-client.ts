@@ -9,12 +9,12 @@ import {
 } from "@/core/resources/list-query";
 import type { ResourceListPage } from "@/core/resources/list-types";
 
-// Fetch CLIENTE de un recurso del contrato para embeberlo en el shell chat-first (record panel,
-// MP-CTRL-0125). Reusa el MISMO contrato y la MISMA serialización de query (buildListSearchParams)
-// que la ruta /resources; sólo cambia el transporte (browserApi con la cookie del médico en vez de
+// Fetch CLIENTE de un recurso del contrato para embeberlo en el shell chat-first (record panel).
+// Reusa el MISMO contrato y la MISMA serialización de query (buildListSearchParams)
+// que la ruta /resources; sólo cambia el transporte (browserApi con la cookie del usuario en vez de
 // serverApi). No duplica el motor: la capability, columnas, filtros y acciones siguen saliendo del
 // backend. La interacción profunda (orden/filtros/paginación/CRUD) se delega a la ruta /resources
-// existente vía enlaces; aquí sólo se obtiene una vista acotada al paciente.
+// existente vía enlaces; aquí sólo se obtiene una vista acotada al registro.
 
 /** Catálogo completo de recursos visibles para la sesión (misma forma que getResourceCatalog,
  *  vía browser). Lo usa el copiloto para DERIVAR sus tools del contrato (deriveResourceTools). */

@@ -1,12 +1,10 @@
+import hmac
+
 from fastapi import APIRouter, Header, Request, Response, status
+from pydantic import SecretStr
 from sqlalchemy.exc import IntegrityError
 
 from backend.app.api.resource_actions import api_error
-from backend.app.bootstrap.security import (
-    BOOTSTRAP_TOKEN_HEADER,
-    bootstrap_token_required,
-    require_bootstrap_token,
-)
 from backend.app.bootstrap.service import (
     BootstrapAdditionalRoleInput,
     BootstrapError,
@@ -32,6 +30,26 @@ from backend.app.security.catalog import SECURITY_GROUPS
 from backend.app.security.rate_limit import limit_bootstrap_initialize
 
 router = APIRouter(prefix="/bootstrap", tags=["bootstrap"])
+
+BOOTSTRAP_TOKEN_HEADER = "X-Bootstrap-Token"
+
+
+def bootstrap_token_required(token: SecretStr | None) -> bool:
+    return token is not None and token.get_secret_value().strip() != ""
+
+
+def require_bootstrap_token(configured_token: SecretStr | None, provided_token: str | None) -> None:
+    """403 opaco si el setup token está configurado y no coincide (tiempo constante)."""
+    if not bootstrap_token_required(configured_token):
+        return
+    expected = configured_token.get_secret_value()
+    if not hmac.compare_digest(expected, provided_token or ""):
+        api_error(
+            status.HTTP_403_FORBIDDEN,
+            "bootstrap_token_invalid",
+            "Bootstrap no disponible.",
+        )
+
 
 
 def _no_store(response: Response) -> None:
@@ -141,8 +159,6 @@ def _payload_to_input(payload: BootstrapInitializeRequest) -> BootstrapInitializ
         public_registration_enabled=payload.public_registration_enabled,
         password_reset_enabled=payload.password_reset_enabled,
         institution_name=payload.institution_name,
-        customer_session_days=payload.customer_session_days,
-        staff_session_minutes=payload.staff_session_minutes,
         additional_roles=[
             BootstrapAdditionalRoleInput(
                 name=role.name,

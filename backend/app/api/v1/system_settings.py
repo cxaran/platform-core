@@ -7,10 +7,13 @@ seguro y el checklist; ``system_settings:configure`` para editar y descartar el
 checklist.
 """
 
+import hashlib
+import hmac
+import secrets
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, File, Query, Request, UploadFile, status
+from fastapi import APIRouter, File, Query, Request, Response, UploadFile, status
 
 from backend.app.api.resource_actions import api_error, get_or_404, paginate_resource
 from backend.app.auth.auth_dependencies import CurrentUser
@@ -20,6 +23,7 @@ from backend.app.models.system_settings import SystemSettings
 from backend.app.resources.registry import SYSTEM_SETTINGS
 from backend.app.schemas.pagination import OffsetPage
 from backend.app.schemas.system_settings import (
+    PublicAnalyticsConfig,
     SendTestEmailRequest,
     VerifyDomainRequest,
     SetupChecklistItemRead,
@@ -38,6 +42,17 @@ router = APIRouter(tags=["system-settings"])
 _NOT_FOUND = "Configuración del sistema no encontrada"
 
 
+def _domain_challenge_digest(nonce: str) -> str:
+    """HMAC del reto de dominio, compartido por el endpoint público
+    (``domain-challenge``) y el verificador (``verify-domain``): ambos lados
+    del reto no pueden divergir."""
+    return hmac.new(
+        settings.secret_key.get_secret_value().encode("utf-8"),
+        f"domain-challenge:{nonce}".encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+
 def _serialize_read(session: SessionDep, row: SystemSettings) -> SystemSettingsRead:
     from backend.app.services.email_service import transport_unavailable_reason
 
@@ -48,6 +63,7 @@ def _serialize_read(session: SessionDep, row: SystemSettings) -> SystemSettingsR
         app_base_url=row.app_base_url,
         app_base_url_verified_at=row.app_base_url_verified_at,
         institution_name=row.institution_name,
+        site_description=row.site_description,
         brand_logo_configured=row.brand_logo_content is not None,
         brand_logo_updated_at=row.brand_logo_updated_at,
         login_verification_mode=row.login_verification_mode,
@@ -55,14 +71,6 @@ def _serialize_read(session: SessionDep, row: SystemSettings) -> SystemSettingsR
         google_auth_client_id=row.google_auth_client_id,
         google_auth_client_secret_configured=row.google_auth_client_secret_ciphertext is not None,
         password_reset_enabled=row.password_reset_enabled,
-        customer_session_days=row.customer_session_days,
-        staff_session_minutes=row.staff_session_minutes,
-        customer_session_days_effective=(
-            row.customer_session_days or settings.customer_session_expire_days
-        ),
-        staff_session_minutes_effective=(
-            row.staff_session_minutes or settings.access_token_expire_minutes
-        ),
         login_attempts_before_lock=row.login_attempts_before_lock,
         email_token_minutes=row.email_token_minutes,
         application_timezone=row.application_timezone,
@@ -151,23 +159,32 @@ def dismiss_setup_checklist(
     session.commit()
 
 
+@router.get("/public/site/analytics", response_model=PublicAnalyticsConfig)
+def read_public_analytics(session: SessionDep, response: Response) -> PublicAnalyticsConfig:
+    """Config PÚBLICA de analítica: la lee el sitio ANTES de cargar cualquier
+    script. Sin auth y cacheable; apagada no filtra ni el ID de medición. El
+    frontend solo carga GA4 en rutas públicas y respetando el consentimiento."""
+    response.headers["Cache-Control"] = "public, max-age=60"
+    row = system.get_system_settings(session)
+    if not row.analytics_enabled or not row.analytics_ga4_measurement_id:
+        return PublicAnalyticsConfig(enabled=False)
+    return PublicAnalyticsConfig(
+        enabled=True,
+        measurement_id=row.analytics_ga4_measurement_id,
+        require_consent=row.analytics_require_consent,
+        debug_mode=row.analytics_debug_mode,
+    )
+
+
 @router.get("/domain-challenge/{nonce}")
 def domain_challenge(nonce: str) -> dict[str, str]:
     """Reto PÚBLICO de verificación de dominio: responde un HMAC del nonce con la
     clave de la instalación. El verificador (verify-domain) llama a este endpoint A
     TRAVÉS del dominio propuesto: si la respuesta coincide, ese dominio sirve ESTA
     instalación. Sin estado, sin auth, sin efectos."""
-    import hashlib
-    import hmac as hmac_module
-
     if not nonce or len(nonce) > 128:
         api_error(status.HTTP_422_UNPROCESSABLE_ENTITY, "invalid_nonce", "Nonce inválido.")
-    digest = hmac_module.new(
-        settings.secret_key.get_secret_value().encode("utf-8"),
-        f"domain-challenge:{nonce}".encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()
-    return {"challenge": digest}
+    return {"challenge": _domain_challenge_digest(nonce)}
 
 
 @router.post("/system-settings/{item_id}/verify-domain", response_model=SystemSettingsRead)
@@ -184,30 +201,20 @@ async def verify_domain(
     Deriva el candidato del header Origin si no se envía; lo normaliza (solo
     esquema+host+puerto) y hace la prueba REAL: pedir el domain-challenge A TRAVÉS
     de ese dominio y comparar el HMAC. Si pasa, se persiste (app_base_url +
-    verified_at), se AÑADE a los orígenes confiables en runtime (nunca reemplaza
-    los del entorno) y habilita los redirect URIs derivados (p. ej. Google Drive)."""
-    import hashlib
-    import hmac as hmac_module
-    import secrets as secrets_module
-
-    from backend.app.core.runtime_origins import add_verified_origin, normalize_base_url
-
+    verified_at) y habilita los redirect URIs derivados (p. ej. Google Drive)."""
     row = get_or_404(session, SystemSettings, item_id, _NOT_FOUND)
     candidate_raw = payload.base_url or request.headers.get("origin") or ""
-    candidate = normalize_base_url(candidate_raw)
+    candidate = system.public_base_url_or_none(candidate_raw)
     if candidate is None:
         api_error(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             "invalid_base_url",
-            "El dominio debe ser un origen http(s) sin ruta ni credenciales.",
+            "El dominio debe ser un origen http(s) sin ruta ni credenciales "
+            "(HTTPS obligatorio en producción).",
         )
 
-    nonce = secrets_module.token_urlsafe(24)
-    expected = hmac_module.new(
-        settings.secret_key.get_secret_value().encode("utf-8"),
-        f"domain-challenge:{nonce}".encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()
+    nonce = secrets.token_urlsafe(24)
+    expected = _domain_challenge_digest(nonce)
 
     import httpx
 
@@ -217,7 +224,7 @@ async def verify_domain(
         received = response.json().get("challenge") if response.status_code == 200 else None
     except Exception:
         received = None
-    if received is None or not hmac_module.compare_digest(received, expected):
+    if received is None or not hmac.compare_digest(received, expected):
         api_error(
             status.HTTP_409_CONFLICT,
             "domain_verification_failed",
@@ -229,7 +236,6 @@ async def verify_domain(
     row.app_base_url_verified_at = utc_now()
     row.updated_by = current_user.id
     session.add(row)
-    add_verified_origin(candidate)
     record_config_change(
         session,
         actor_user_id=current_user.id,

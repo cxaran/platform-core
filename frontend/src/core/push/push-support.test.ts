@@ -5,6 +5,7 @@ import {
   buildSubscriptionPayload,
   detectPushCapability,
   isAppleMobile,
+  sameApplicationServerKey,
   urlBase64ToUint8Array,
   type PushEnvironment,
 } from "./push-support.ts";
@@ -135,4 +136,13 @@ describe("buildSubscriptionPayload", () => {
       null,
     );
   });
+});
+
+it("sameApplicationServerKey: coincide solo con los mismos bytes", () => {
+  const desired = new Uint8Array([1, 2, 3]);
+  assert.equal(sameApplicationServerKey(new Uint8Array([1, 2, 3]).buffer, desired), true);
+  assert.equal(sameApplicationServerKey(new Uint8Array([1, 2, 4]).buffer, desired), false);
+  assert.equal(sameApplicationServerKey(new Uint8Array([1, 2]).buffer, desired), false);
+  assert.equal(sameApplicationServerKey(null, desired), false);
+  assert.equal(sameApplicationServerKey(undefined, desired), false);
 });

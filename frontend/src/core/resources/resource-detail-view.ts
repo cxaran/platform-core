@@ -7,8 +7,7 @@ import type {
 import { resolveRelationTarget } from "@/core/resources/relation-picker";
 
 /**
- * Modelo de presentación de la página de DETALLE de solo lectura (último hueco de cobertura
- * del frontend; ver ``docs/frontend-coverage-audit.md``). Reusa EXACTAMENTE la misma metadata
+ * Modelo de presentación de la página de DETALLE de solo lectura. Reusa EXACTAMENTE la misma metadata
  * de capability que el formulario de edición (campos + widgets) para mostrar cada valor en su
  * forma de lectura, sin un solo input: el detalle nunca muta nada.
  *
@@ -43,14 +42,15 @@ export type DisplayKind =
   | "datetime"
   | "time"
   | "select"
-  | "relation";
+  | "relation"
+  | "json";
 
 /**
  * Campos a mostrar en el detalle. El detalle debe mostrar TODOS los campos del registro, no sólo
  * los editables: por eso se UNE el formulario de creación con el de actualización (dedup por
  * nombre, conservando el orden: primero los de creación, luego los que sólo aparezcan en update).
- * El de creación aporta los campos INMUTABLES (p. ej. ``patient_id``, que update omite porque no
- * se reasigna) — sin esta unión la FK del paciente nunca se vería. Se descartan los campos
+ * El de creación aporta los campos INMUTABLES (p. ej. una FK que se fija al crear y update omite
+ * porque no se reasigna) — sin esta unión esa FK nunca se vería. Se descartan los campos
  * ``password`` (nunca tienen un valor legible en lectura). Si no hay formularios (rol de sólo
  * lectura), cae a los campos de la lista (sin widget: se pinta por ``type``).
  */
@@ -125,6 +125,8 @@ export function fieldDisplayKind(field: DisplayField): DisplayKind {
     }
   }
   switch (field.type) {
+    case "json":
+      return "json";
     case "boolean":
       return "boolean";
     case "integer":
@@ -211,6 +213,9 @@ export function formatDisplayValue(field: DisplayField, value: unknown): string 
     }
     case "select":
       return selectLabel(field, value);
+    case "json":
+      // Objeto de solo lectura (p. ej. changed_fields de auditoría): JSON legible.
+      return typeof value === "object" ? JSON.stringify(value, null, 2) : safeText(value);
     case "relation":
     case "text":
     default:

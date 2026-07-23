@@ -34,7 +34,12 @@ type Step = "admin" | "roles";
 export function BootstrapWizard({ status }: Readonly<{ status: BootstrapStatusRead }>) {
   const router = useRouter();
   const [step, setStep] = useState<Step>("admin");
-  const [draft, setDraft] = useState<BootstrapWizardDraft>(() => emptyBootstrapDraft());
+  const [draft, setDraft] = useState<BootstrapWizardDraft>(() => ({
+    ...emptyBootstrapDraft(),
+    // Propuesta editable: la URL con la que se está instalando. Sin ella los
+    // correos degradan a token en texto y el login con Google queda apagado.
+    app_base_url: typeof window !== "undefined" ? window.location.origin : "",
+  }));
   const [token, setToken] = useState("");
   const [catalog, setCatalog] = useState<BootstrapCatalogRead | null>(null);
   const [pending, setPending] = useState(false);
@@ -315,10 +320,18 @@ function RolesStep({
         <div className="mt-4 grid gap-4 sm:grid-cols-[1.3fr_1fr]">
           <TextField
             id="institution-name"
-            label="Nombre del consultorio (opcional)"
+            label="Nombre de la institución (opcional)"
             value={draft.institution_name}
             required={false}
             onChange={(value) => setDraft({ ...draft, institution_name: value })}
+          />
+          <TextField
+            id="app-base-url"
+            label="URL pública de la instalación"
+            value={draft.app_base_url}
+            required={false}
+            error={fieldErrors["app_base_url"]?.join(" ")}
+            onChange={(value) => setDraft({ ...draft, app_base_url: value })}
           />
           <div className="flex flex-col gap-2 self-end pb-2">
             <label className="flex items-center gap-3 text-sm text-[var(--tx)]">

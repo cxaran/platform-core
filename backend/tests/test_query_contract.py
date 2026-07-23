@@ -217,9 +217,10 @@ class ConfigSourceTest(unittest.TestCase):
         with self.assertRaisesRegex(QuerySchemaConfigError, "ambiguous_query_config"):
             ListQueryContract(name="Bad", model=Widget, schema=WidgetRead, options=OPTIONS, policy=policy)
 
-    def test_no_source_raises(self) -> None:
-        with self.assertRaisesRegex(QuerySchemaConfigError, "ambiguous_query_config"):
-            ListQueryContract(name="Bad", model=Widget, schema=WidgetRead)
+    def test_no_source_defaults_to_empty_options(self) -> None:
+        # Sin fuentes: options vacías (solo paginación + desempate por PK).
+        empty = ListQueryContract(name="EmptyQuery", model=Widget, schema=WidgetRead)
+        self.assertEqual(dict(empty.plan.public_sort_columns), {})
 
 
 if __name__ == "__main__":

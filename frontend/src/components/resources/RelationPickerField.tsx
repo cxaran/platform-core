@@ -25,8 +25,8 @@ const inputClass =
 
 /**
  * Selector de relación para un campo FK del formulario genérico (F5). En lugar de pegar un
- * UUID a mano, el usuario BUSCA el registro padre por su etiqueta (nombre del paciente,
- * del médico, motivo de la consulta) y se guarda su UUID. El valor real viaja en un
+ * UUID a mano, el usuario BUSCA el registro padre por su etiqueta legible (el campo label
+ * del recurso destino) y se guarda su UUID. El valor real viaja en un
  * ``<input>`` con ``name={field.name}``, así que el armado de payload (FormData) no cambia.
  * Mantiene un modo "ingresar ID manualmente" como respaldo para no perder capacidad.
  */

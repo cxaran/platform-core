@@ -10,10 +10,7 @@ import unittest
 from fastapi import FastAPI, Query
 from fastapi.testclient import TestClient
 
-from backend.app.core.error_handlers import (
-    _spanish_validation_message,
-    register_exception_handlers,
-)
+from backend.app.core.error_handlers import register_exception_handlers
 from backend.app.query.validation import QueryParameterError
 
 
@@ -92,44 +89,36 @@ class RequestValidationErrorContractTest(unittest.TestCase):
         self.assertEqual(field, "limit")
 
 
-class SpanishValidationMessageTest(unittest.TestCase):
-    def test_string_too_short_uses_declared_minimum(self) -> None:
-        message = _spanish_validation_message(
-            {"type": "string_too_short", "ctx": {"min_length": 4}, "msg": "x"}
-        )
-        self.assertEqual(message, "Debe tener al menos 4 caracteres.")
+class StructuredValidationErrorTest(unittest.TestCase):
+    """Los items de validación exponen ``type`` y ``ctx`` estructurados: la
+    traducción a mensajes UX vive en el frontend (validation-messages.ts)."""
 
-    def test_string_too_long_uses_declared_maximum(self) -> None:
-        message = _spanish_validation_message(
-            {"type": "string_too_long", "ctx": {"max_length": 50}, "msg": "x"}
-        )
-        self.assertEqual(message, "Debe tener como máximo 50 caracteres.")
+    def setUp(self) -> None:
+        self.client = TestClient(_build_app())
 
-    def test_missing_field(self) -> None:
-        self.assertEqual(
-            _spanish_validation_message({"type": "missing", "msg": "Field required"}),
-            "Este campo es obligatorio.",
-        )
+    def test_constraint_error_exposes_type_and_ctx(self) -> None:
+        response = self.client.get("/validation-error?limit=0")
 
-    def test_domain_value_error_is_preserved(self) -> None:
-        # Mensaje de un validador de dominio (ya en español): se conserva.
-        message = _spanish_validation_message(
-            {"type": "value_error", "msg": "Value error, Las contraseñas no coinciden"}
-        )
-        self.assertEqual(message, "Las contraseñas no coinciden")
+        error = response.json()["errors"][0]
+        self.assertEqual(error["type"], "greater_than_equal")
+        self.assertEqual(error["ctx"], {"ge": 1})
+        self.assertTrue(error["message"])
 
-    def test_email_value_error_is_localized(self) -> None:
-        message = _spanish_validation_message(
-            {"type": "value_error", "msg": "value is not a valid email address: bad"}
-        )
-        self.assertEqual(message, "Correo electrónico inválido.")
+    def test_missing_field_exposes_type_without_ctx(self) -> None:
+        response = self.client.get("/validation-error")
 
-    def test_unknown_type_uses_safe_general_message(self) -> None:
-        message = _spanish_validation_message(
-            {"type": "something_internal", "msg": "internal english detail"}
-        )
-        self.assertEqual(message, "El valor ingresado no es válido.")
-        self.assertNotIn("english", message)
+        error = response.json()["errors"][0]
+        self.assertEqual(error["type"], "missing")
+        self.assertNotIn("ctx", error)
+
+    def test_business_error_items_have_no_type(self) -> None:
+        # Los errores de negocio (QueryParameterError) ya vienen en español y sin
+        # metadata estructurada: el frontend debe usarlos tal cual.
+        response = self.client.get("/raise-query-param-error")
+
+        error = response.json()["errors"][0]
+        self.assertNotIn("type", error)
+        self.assertEqual(error["message"], "No se permite ordenar por 'bad_field'.")
 
 
 if __name__ == "__main__":

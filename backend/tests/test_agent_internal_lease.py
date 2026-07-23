@@ -47,7 +47,7 @@ settings.agent_gateway_internal_secret = SecretStr(INTERNAL_SECRET)
 # Evita la dependencia de Redis del rate-limit en el test del endpoint.
 settings.rate_limit_enabled = False
 
-from backend.app.agent.crypto import encrypt_secret  # noqa: E402
+from backend.app.services.secret_cipher import encrypt_secret  # noqa: E402
 from backend.app.core.database import get_db  # noqa: E402
 from backend.app.main import app  # noqa: E402
 from backend.app.models import Base  # noqa: E402

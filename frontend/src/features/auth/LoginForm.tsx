@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { ApiRequestError } from "@/core/api/api-error";
 import { login, verifyLogin } from "@/core/auth/public-auth-client";
-import { AuthAlert, AuthLabel } from "@/features/auth/PublicAuthShell";
+import { AuthAlert, AuthLabel } from "@/features/auth/auth-pieces";
 
 // Caja de campo del diseño (LOGIN, MP-CTRL-0127): icono + input transparente en un contenedor
 // redondeado. SÓLO presentación; los atributos del input (name/type/autoComplete/required) se

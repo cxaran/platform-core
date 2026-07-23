@@ -581,7 +581,7 @@ class BackupApiAndTickTest(unittest.TestCase):
 
         return mock.patch.object(
             backups.settings,
-            "backup_token_encryption_key",
+            "app_encryption_key",
             SecretStr(Fernet.generate_key().decode()),
         )
 

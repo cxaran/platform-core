@@ -8,7 +8,7 @@ import { fetchRelationItem, fetchRelationMeta } from "@/core/resources/relation-
 /**
  * Etiqueta HUMANA de un campo FK en la página de detalle (solo lectura). Reusa la misma capa que
  * el selector de relación (F5): resuelve la metadata del recurso destino y lee el item por su id
- * (``fetchRelationItem``) para mostrar su nombre (paciente/médico/consulta) en vez del UUID.
+ * (``fetchRelationItem``) para mostrar su etiqueta legible (el campo label del recurso) en vez del UUID.
  *
  * Degradación honesta: sin permiso de lectura individual o item inexistente, se queda con el UUID
  * (nunca inventa una etiqueta). No emite ningún control editable: es sólo texto.

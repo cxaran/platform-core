@@ -70,3 +70,16 @@ export function buildSubscriptionPayload(json: unknown): SubscriptionPayload | n
   if (typeof auth !== "string" || auth === "") return null;
   return { endpoint, keys: { p256dh, auth } };
 }
+
+/** ¿La suscripción existente usa la MISMA clave VAPID que publica el backend?
+ * Si no (p. ej. base recreada → par VAPID nuevo), reutilizarla produciría
+ * fallos de firma permanentes: hay que resuscribir. */
+export function sameApplicationServerKey(
+  current: ArrayBuffer | null | undefined,
+  desired: Uint8Array,
+): boolean {
+  if (!current) return false;
+  const bytes = new Uint8Array(current);
+  if (bytes.length !== desired.length) return false;
+  return bytes.every((value, index) => value === desired[index]);
+}

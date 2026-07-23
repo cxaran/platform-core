@@ -55,6 +55,10 @@ function pageWindow(current: number, totalPages: number): (number | "gap")[] {
 
 function rangeText(pagination: Pagination): string {
   const { total, offset, limit } = pagination;
+  // Feed sin total (``NoTotalCount``): sin conteo exacto, solo el rango de la página.
+  if (total == null) {
+    return `${offset + 1}–${offset + limit}`;
+  }
   if (total === 0) return "Sin registros";
   const from = offset + 1;
   const to = Math.min(offset + limit, total);
@@ -144,12 +148,16 @@ export function ResourcePagination({
   maxLimit?: number;
 }>) {
   const { total, limit, offset } = pagination;
-  const totalPages = limit > 0 ? Math.ceil(total / limit) : 0;
+  // Feed sin total (``NoTotalCount``): no hay número de páginas ni "por página" (ambos
+  // necesitan el total); la navegación es prev/next por ``offset`` y ``has_next``.
+  const hasTotal = total != null;
+  const totalPages = hasTotal && limit > 0 ? Math.ceil(total / limit) : 0;
   const currentPage = limit > 0 ? Math.floor(offset / limit) + 1 : 1;
 
   if (variant === "compact") {
     // Una sola página completa: nada que paginar, no se roba espacio.
-    if (total <= limit && offset === 0) return null;
+    if (hasTotal && total <= limit && offset === 0) return null;
+    if (!hasTotal && offset === 0 && !pagination.has_next) return null;
     return (
       <div className="flex items-center justify-end gap-2">
         <span aria-live="polite" className="text-[12px] tabular-nums text-[var(--tx3)]">
@@ -172,10 +180,29 @@ export function ResourcePagination({
   }
 
   // Sin registros: el estado vacío de la tabla ya lo comunica; no se roba espacio.
-  if (total === 0) return null;
+  if (hasTotal && total === 0) return null;
+  // Feed sin total y una sola página (sin anterior ni siguiente): nada que paginar.
+  if (!hasTotal && offset === 0 && !pagination.has_next) return null;
 
   let pages: ReactNode = null;
-  if (buildOffsetHref && totalPages > 1) {
+  if (buildOffsetHref && !hasTotal) {
+    // Feed sin total: solo flechas prev/next (sin ventana de números de página).
+    pages = (
+      <nav aria-label="Páginas" className="flex items-center gap-1">
+        <ArrowControl
+          direction="prev"
+          href={offset > 0 ? buildOffsetHref(offset - limit) : undefined}
+          label="Página anterior"
+        />
+        <span className="px-1 text-[13px] tabular-nums text-[var(--tx3)]">{currentPage}</span>
+        <ArrowControl
+          direction="next"
+          href={pagination.has_next ? buildOffsetHref(offset + limit) : undefined}
+          label="Página siguiente"
+        />
+      </nav>
+    );
+  } else if (buildOffsetHref && totalPages > 1) {
     pages = (
       <nav aria-label="Páginas" className="flex flex-wrap items-center gap-1">
         <ArrowControl
@@ -209,7 +236,7 @@ export function ResourcePagination({
   }
 
   let limits: ReactNode = null;
-  if (buildLimitHref) {
+  if (buildLimitHref && total != null) {
     const options = limitOptions(total, limit, maxLimit);
     if (options.length > 1) {
       limits = (

@@ -33,6 +33,9 @@ class FieldValueType(str, Enum):
     DATETIME = "datetime"
     ENUM = "enum"
     ARRAY = "array"
+    # Objeto JSON de solo lectura (p. ej. changed_fields de auditoría): la tabla
+    # lo resume y el detalle lo muestra formateado. Nunca es editable ni filtrable.
+    JSON = "json"
 
 
 class WidgetType(str, Enum):
@@ -48,6 +51,8 @@ class WidgetType(str, Enum):
     # literal ``YYYY-MM-DD`` (nunca ``new Date()``/``toISOString()``).
     DATE = "date"
     DATERANGE = "daterange"
+    # Rango numérico (``between`` sobre int/Decimal): dos inputs numéricos ``from``/``to``.
+    NUMBERRANGE = "numberrange"
     DATETIME = "datetime"
     TIME = "time"
 
@@ -58,13 +63,19 @@ class FilterOperator(str, Enum):
     CONTAINS = "contains"
     STARTS_WITH = "starts_with"
     ENDS_WITH = "ends_with"
+    GT = "gt"
     GTE = "gte"
+    LT = "lt"
     LTE = "lte"
     ON = "on"
     BEFORE = "before"
     AFTER = "after"
     BETWEEN = "between"
     IN = "in"
+    NOT_IN = "not_in"
+    # Operadores de columna ARRAY: solapa cualquiera / contiene todos.
+    CONTAINS_ANY = "contains_any"
+    CONTAINS_ALL = "contains_all"
     ISNULL = "isnull"
 
 

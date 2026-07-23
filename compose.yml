@@ -48,8 +48,6 @@ services:
       context: ./backend
       target: prod
     image: ghcr.io/cxaran/platform-core-backend:${IMAGE_TAG:-latest}
-    # El archivo de entorno debe definir TRUSTED_BROWSER_ORIGINS con los orígenes
-    # HTTPS públicos confiables; en producción la app falla al iniciar si está vacío.
     env_file: ${APP_ENV_FILE:-.env}
     environment:
       # Métricas Prometheus coherentes con los 4 workers de gunicorn (modo
@@ -93,7 +91,7 @@ services:
   # bajo el MISMO origen en /model-gateway/ (para que el navegador reenvíe la cookie de
   # sesión). El archivo de entorno debe definir GATEWAY_AGENT_TICKET_SECRET (= el
   # AGENT_GATEWAY_TICKET_SIGNING_SECRET del backend), GATEWAY_BACKEND_INTERNAL_URL,
-  # GATEWAY_BACKEND_INTERNAL_SECRET (= AGENT_GATEWAY_INTERNAL_SECRET) y GATEWAY_ALLOWED_ORIGINS.
+  # GATEWAY_BACKEND_INTERNAL_SECRET (= AGENT_GATEWAY_INTERNAL_SECRET).
   model-gateway:
     build:
       context: ./model-gateway

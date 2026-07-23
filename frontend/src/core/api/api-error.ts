@@ -1,6 +1,12 @@
+import { translateValidationErrors } from "./validation-messages";
+
 export type ApiErrorItem = {
   field?: string | null;
   message: string;
+  // Error estructurado de Pydantic (validation_error): tipo estándar y sus
+  // constraints; la traducción a español vive en validation-messages.ts.
+  type?: string | null;
+  ctx?: Record<string, string | number | boolean> | null;
 };
 
 export type ApiErrorBody = {
@@ -32,7 +38,9 @@ export function isApiErrorBody(value: unknown): value is ApiErrorBody {
 
 export function normalizeApiError(status: number, value: unknown): ApiErrorBody {
   if (isApiErrorBody(value)) {
-    return value;
+    // Punto único por el que pasa toda respuesta de error: los items de
+    // validación llegan estructurados y aquí se traducen a mensajes UX.
+    return { ...value, errors: translateValidationErrors(value.errors) };
   }
 
   return {

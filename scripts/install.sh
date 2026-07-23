@@ -12,8 +12,6 @@
 #
 # Uso:
 #   ./scripts/install.sh                 instalación interactiva completa
-#   ./scripts/install.sh --resume        re-ejecuta la orquestación con el .env
-#                                        existente (instalación interrumpida)
 #   ./scripts/install.sh --print-env     genera y muestra un .env SIN escribirlo
 #                                        ni tocar Docker (revisión previa)
 #
@@ -26,10 +24,9 @@ cd "$(dirname "$0")/.."
 
 MODE="install"
 case "${1:-}" in
-  --resume)    MODE="resume" ;;
   --print-env) MODE="print-env" ;;
   "" ) ;;
-  *) echo "Opción desconocida: $1 (usa --resume o --print-env)"; exit 1 ;;
+  *) echo "Opción desconocida: $1 (usa --print-env)"; exit 1 ;;
 esac
 
 command -v docker >/dev/null || { echo "Docker no está instalado."; exit 1; }
@@ -109,20 +106,15 @@ orchestrate() {
   echo
   echo " Tras el asistente, el checklist de la app te guía para configurar"
   echo " correo, dominio verificado y respaldos — todo desde la interfaz."
+  echo
+  echo " Completado el asistente, el token queda inerte (todo responde 409);"
+  echo " puedes borrar BOOTSTRAP_SETUP_TOKEN del .env por higiene."
   echo "=============================================================="
 }
 
-# ------------------------------------------------------------------- resume ----
-if [ "$MODE" = "resume" ]; then
-  [ -f .env ] || { echo "No hay .env que reanudar: corre la instalación completa."; exit 1; }
-  DOMAIN="$(grep -E '^TRUSTED_BROWSER_ORIGINS=' .env | cut -d= -f2- | cut -d, -f1)"
-  orchestrate "${DOMAIN:-http://localhost}"
-  exit 0
-fi
-
 if [ "$MODE" = "install" ] && [ -f .env ]; then
-  echo "Ya existe un .env — no se toca (usa --resume para re-orquestar, o bórralo"
-  echo "conscientemente si quieres regenerar los secretos)."
+  echo "Ya existe un .env — no se toca (bórralo conscientemente si quieres"
+  echo "regenerar los secretos; para re-orquestar usa docker compose directamente)."
   exit 1
 fi
 
@@ -211,7 +203,6 @@ ENV_CONTENT="$(cat <<ENV
 # Generado por scripts/install.sh — secretos ÚNICOS de esta instalación.
 # La política (registro, correo, respaldos, retención…) se administra desde la UI.
 ENVIRONMENT=${ENVIRONMENT}
-TRUSTED_BROWSER_ORIGINS=${DOMAIN}
 
 # Perfiles de compose de ESTA instalación (docker compose los lee de aquí):
 #   taskiq = tareas en segundo plano (respaldos, retención, correos de alertas)
@@ -244,7 +235,6 @@ AGENT_GATEWAY_INTERNAL_SECRET=${AGENT_INTERNAL_SECRET}
 GATEWAY_AGENT_TICKET_SECRET=${AGENT_TICKET_SECRET}
 GATEWAY_BACKEND_INTERNAL_SECRET=${AGENT_INTERNAL_SECRET}
 GATEWAY_BACKEND_INTERNAL_URL=http://backend:8000
-GATEWAY_ALLOWED_ORIGINS=${DOMAIN}
 # Habilita proveedores según uses: GATEWAY_OPENAI_ENABLED=true, etc.
 
 # Transporte de correo del entorno (el modo se elige en la UI: entorno/SMTP/Resend).

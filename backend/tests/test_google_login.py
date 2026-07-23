@@ -113,6 +113,7 @@ class GoogleLoginTest(unittest.TestCase):
         with Session(self.engine) as session:
             session.add(
                 SystemSettings(
+                    app_base_url="https://app.example.com",
                     google_login_enabled=enabled,
                     google_auth_client_id="client-id.apps.googleusercontent.com" if enabled else None,
                     google_auth_client_secret_ciphertext=(
@@ -150,7 +151,7 @@ class GoogleLoginTest(unittest.TestCase):
         self.assertEqual(start.status_code, 302, start.text)
         state = next(iter(self.states))
 
-        async def fake_exchange(session, request, code, nonce):
+        async def fake_exchange(session, code, nonce):
             if error:
                 raise GoogleLoginError(error)
             return profile

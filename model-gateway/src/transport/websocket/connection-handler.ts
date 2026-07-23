@@ -16,9 +16,16 @@ export function createWebSocketHandler(container: GatewayContainer) {
   const cancelTurn = new CancelTurn(container);
 
   return (socket: WebSocket, request: FastifyRequest): void => {
-    const origin = request.headers.origin;
-    if (origin && !container.settings.allowedOrigins.includes(origin)) {
-      socket.close(1008, "Origin not allowed");
+    // Misma protección que el backend (core/csrf.py): fetch metadata sin allowlist.
+    // El gateway se sirve same-site detrás de nginx; un handshake que el navegador
+    // declara cross-site solo puede ser una página de terceros usando la cookie.
+    // Sin el header (clientes no-navegador, navegadores antiguos) se deja pasar:
+    // la autenticación real es la sesión del gateway + el ticket firmado.
+    const fetchSite = String(request.headers["sec-fetch-site"] ?? "")
+      .trim()
+      .toLowerCase();
+    if (fetchSite === "cross-site") {
+      socket.close(1008, "Cross-site request rejected");
       return;
     }
 
